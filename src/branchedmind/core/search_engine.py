@@ -1,6 +1,9 @@
-"""Search engine: hybrid BM25 + vector search."""
+"""Search engine: hybrid BM25 + vector search with temporal scoring."""
 
 from __future__ import annotations
+
+import math
+from datetime import datetime, timezone
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,6 +36,7 @@ class SearchEngine:
         category: str | None = None,
         limit: int = 10,
         time_range: dict | None = None,
+        temporal_weight: float = 0.0,
     ) -> list[dict]:
         """Search facts using hybrid BM25 + vector search.
 
@@ -43,6 +47,9 @@ class SearchEngine:
             category: Filter by category.
             limit: Max results.
             time_range: Optional {"after": ISO, "before": ISO}.
+            temporal_weight: Weight for recency scoring (0.0-1.0).
+                0.0 = no temporal weighting (default, backward compatible).
+                0.2 = moderate recency preference.
 
         Returns:
             List of scored results with fact data.
@@ -69,11 +76,80 @@ class SearchEngine:
                 else:
                     results[r["id"]] = r
 
+        # Apply temporal scoring if enabled
+        if temporal_weight > 0:
+            now = datetime.now(timezone.utc)
+            for r in results.values():
+                relevance = r["score"]
+                recency = _recency_score(r.get("created_at"), now)
+                r["score"] = relevance * (1 - temporal_weight) + recency * temporal_weight
+
         # Sort by score descending and limit
         sorted_results = sorted(
             results.values(), key=lambda x: x["score"], reverse=True
         )
         return sorted_results[:limit]
+
+    async def search_cross_branch(
+        self,
+        query: str,
+        task_id: str | None = None,
+        agent_id: str | None = None,
+        tags: list[str] | None = None,
+        limit: int = 10,
+    ) -> list[dict]:
+        """Search across branches using dimension columns instead of branch_name.
+
+        This enables cross-task discovery and agent replay searches.
+
+        Args:
+            query: Search query.
+            task_id: Filter by task.
+            agent_id: Filter by agent.
+            tags: Filter facts whose task has these tags (requires join).
+            limit: Max results.
+
+        Returns:
+            List of scored results with branch attribution.
+        """
+        if not query.strip():
+            return []
+
+        # FTS5 keyword search (branch-agnostic)
+        fts_result = await self._session.execute(
+            text(
+                "SELECT id, rank FROM facts_fts WHERE facts_fts MATCH :query "
+                "ORDER BY rank LIMIT :limit"
+            ),
+            {"query": query, "limit": limit * 3},
+        )
+        fts_rows = fts_result.fetchall()
+        if not fts_rows:
+            return []
+
+        fts_ids = [row[0] for row in fts_rows]
+        fts_scores = {row[0]: -row[1] for row in fts_rows}
+
+        # Fetch facts with dimension filters
+        stmt = select(Fact).where(
+            Fact.id.in_(fts_ids),
+            Fact.status == "active",
+        )
+        if task_id:
+            stmt = stmt.where(Fact.task_id == task_id)
+        if agent_id:
+            stmt = stmt.where(Fact.agent_id == agent_id)
+
+        result = await self._session.execute(stmt)
+        facts = result.scalars().all()
+
+        max_score = max(fts_scores.values()) if fts_scores else 1.0
+        results = [
+            self._fact_to_result(f, fts_scores.get(f.id, 0) / max(max_score, 1e-6))
+            for f in facts
+        ]
+        results.sort(key=lambda x: x["score"], reverse=True)
+        return results[:limit]
 
     async def _keyword_search(
         self,
@@ -242,7 +318,27 @@ class SearchEngine:
             "status": fact.status,
             "branch_name": fact.branch_name,
             "session_id": fact.session_id,
+            "task_id": fact.task_id,
+            "agent_id": fact.agent_id,
             "score": score,
             "created_at": fact.created_at.isoformat() if fact.created_at else None,
             "metadata": fact.metadata_json,
         }
+
+
+def _recency_score(created_at_iso: str | None, now: datetime) -> float:
+    """Compute recency score with exponential decay.
+
+    Returns value between 0.0 and 1.0, where 1.0 is "just created".
+    Decay rate: half-life of ~6 days (0.005 per hour).
+    """
+    if not created_at_iso:
+        return 0.5
+    try:
+        created = datetime.fromisoformat(created_at_iso)
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        hours_old = max((now - created).total_seconds() / 3600, 0)
+        return math.exp(-0.005 * hours_old)
+    except (ValueError, TypeError):
+        return 0.5

@@ -34,6 +34,8 @@ class ObservationEngine:
         raw_output: str | None = None,
         branch_name: str = "main",
         metadata: dict | None = None,
+        task_id: str | None = None,
+        agent_id: str | None = None,
     ) -> Observation:
         """Write an observation record.
 
@@ -46,6 +48,8 @@ class ObservationEngine:
             raw_output: Truncated raw output.
             branch_name: Target branch.
             metadata: Additional metadata.
+            task_id: Associated task ID.
+            agent_id: Associated agent ID.
 
         Returns:
             Created Observation object.
@@ -62,6 +66,8 @@ class ObservationEngine:
             raw_output=raw_output,
             branch_name=branch_name,
             metadata_json=metadata,
+            task_id=task_id,
+            agent_id=agent_id,
         )
         self._session.add(obs)
         await self._session.flush()

@@ -23,6 +23,8 @@ class SessionManager:
         project_path: str | None = None,
         parent_session: str | None = None,
         metadata: dict | None = None,
+        task_id: str | None = None,
+        agent_id: str | None = None,
     ) -> Session:
         """Register a new session."""
         sess = Session(
@@ -31,6 +33,8 @@ class SessionManager:
             project_path=project_path,
             parent_session=parent_session,
             metadata_json=metadata,
+            task_id=task_id,
+            agent_id=agent_id,
         )
         self._session.add(sess)
         await self._session.commit()

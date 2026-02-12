@@ -11,6 +11,7 @@ from sqlalchemy import (
     Enum,
     Float,
     Index,
+    Integer,
     String,
     Text,
     func,
@@ -45,6 +46,8 @@ class Fact(Base):
     parent_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     session_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     branch_name: Mapped[str] = mapped_column(String(100), default="main")
+    task_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    agent_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     metadata_json: Mapped[dict | None] = mapped_column(
         "metadata", JSON, nullable=True
     )
@@ -61,6 +64,8 @@ class Fact(Base):
         Index("idx_facts_status", "status"),
         Index("idx_facts_session", "session_id"),
         Index("idx_facts_created", "created_at"),
+        Index("idx_facts_task", "task_id"),
+        Index("idx_facts_agent", "agent_id"),
     )
 
 
@@ -81,6 +86,7 @@ class Relation(Base):
     valid_to: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     session_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     branch_name: Mapped[str] = mapped_column(String(100), default="main")
+    task_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now()
     )
@@ -90,6 +96,7 @@ class Relation(Base):
         Index("idx_relations_target", "target_entity"),
         Index("idx_relations_type", "relation_type"),
         Index("idx_relations_branch", "branch_name"),
+        Index("idx_relations_task", "task_id"),
     )
 
 
@@ -107,6 +114,12 @@ class Observation(Base):
     raw_input: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_output: Mapped[str | None] = mapped_column(Text, nullable=True)
     branch_name: Mapped[str] = mapped_column(String(100), default="main")
+    task_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    agent_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    parent_observation_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True
+    )
+    outcome: Mapped[str | None] = mapped_column(String(20), nullable=True)
     metadata_json: Mapped[dict | None] = mapped_column(
         "metadata", JSON, nullable=True
     )
@@ -119,6 +132,8 @@ class Observation(Base):
         Index("idx_obs_type", "observation_type"),
         Index("idx_obs_branch", "branch_name"),
         Index("idx_obs_created", "created_at"),
+        Index("idx_obs_task", "task_id"),
+        Index("idx_obs_agent", "agent_id"),
     )
 
 
@@ -131,6 +146,8 @@ class Session(Base):
     parent_session: Mapped[str | None] = mapped_column(String(100), nullable=True)
     branch_name: Mapped[str] = mapped_column(String(100), default="main")
     project_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    task_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    agent_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     status: Mapped[str] = mapped_column(
         Enum("active", "completed", "abandoned", name="session_status"),
         default="active",
@@ -194,6 +211,95 @@ class Snapshot(Base):
     label: Mapped[str | None] = mapped_column(String(200), nullable=True)
     branch_name: Mapped[str] = mapped_column(String(100), default="main")
     snapshot_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now()
+    )
+
+
+# === Multi-Agent Task Memory ===
+
+
+class Task(Base):
+    """A long-running task that groups multiple agents and sessions."""
+
+    __tablename__ = "tasks"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    branch_name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    parent_branch: Mapped[str] = mapped_column(String(100), default="main")
+    status: Mapped[str] = mapped_column(
+        Enum("active", "completed", "paused", "failed", name="task_status"),
+        default="active",
+    )
+    task_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    tags: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    objectives: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    result_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[dict | None] = mapped_column(
+        "metadata", JSON, nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index("idx_tasks_status", "status"),
+        Index("idx_tasks_branch", "branch_name"),
+        Index("idx_tasks_type", "task_type"),
+    )
+
+
+class TaskAgent(Base):
+    """An agent assigned to a task."""
+
+    __tablename__ = "task_agents"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    task_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    agent_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    branch_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    role: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    status: Mapped[str] = mapped_column(
+        Enum("active", "completed", "failed", name="agent_status"),
+        default="active",
+    )
+    assigned_objectives: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    joined_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now()
+    )
+    left_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index("idx_task_agents_task", "task_id"),
+        Index("idx_task_agents_agent", "agent_id"),
+        Index("idx_task_agents_branch", "branch_name"),
+    )
+
+
+class ConsolidationHistory(Base):
+    """Audit trail for memory consolidation events."""
+
+    __tablename__ = "consolidation_history"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    task_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    agent_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    session_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    consolidation_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    source_branch: Mapped[str] = mapped_column(String(100), nullable=False)
+    target_branch: Mapped[str] = mapped_column(String(100), nullable=False)
+    facts_created: Mapped[int] = mapped_column(Integer, default=0)
+    facts_updated: Mapped[int] = mapped_column(Integer, default=0)
+    facts_deduplicated: Mapped[int] = mapped_column(Integer, default=0)
+    observations_processed: Mapped[int] = mapped_column(Integer, default=0)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now()
     )

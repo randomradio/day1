@@ -31,3 +31,15 @@ class EmbeddingError(BranchedMindError):
 
 class SnapshotError(BranchedMindError):
     """Snapshot operation failed."""
+
+
+class TaskNotFoundError(BranchedMindError):
+    """Requested task does not exist."""
+
+
+class TaskAgentError(BranchedMindError):
+    """Task agent operation failed."""
+
+
+class ConsolidationError(BranchedMindError):
+    """Memory consolidation failed."""

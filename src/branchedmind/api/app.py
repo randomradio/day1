@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from branchedmind.api.routes import branches, facts, observations, relations, search, snapshots
+from branchedmind.api.routes import branches, facts, observations, relations, search, snapshots, tasks
 from branchedmind.db.engine import init_db
 
 
@@ -34,6 +34,7 @@ app = FastAPI(
 
 # Search routes must come before parameterized routes to avoid conflicts
 app.include_router(search.router, prefix="/api/v1", tags=["search"])
+app.include_router(tasks.router, prefix="/api/v1", tags=["tasks"])
 app.include_router(facts.router, prefix="/api/v1", tags=["facts"])
 app.include_router(observations.router, prefix="/api/v1", tags=["observations"])
 app.include_router(relations.router, prefix="/api/v1", tags=["relations"])

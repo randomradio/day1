@@ -9,6 +9,7 @@ from mcp.types import Tool
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from branchedmind.core.branch_manager import BranchManager
+from branchedmind.core.consolidation_engine import ConsolidationEngine
 from branchedmind.core.embedding import get_embedding_provider
 from branchedmind.core.fact_engine import FactEngine
 from branchedmind.core.merge_engine import MergeEngine
@@ -17,6 +18,7 @@ from branchedmind.core.relation_engine import RelationEngine
 from branchedmind.core.search_engine import SearchEngine
 from branchedmind.core.session_manager import SessionManager
 from branchedmind.core.snapshot_manager import SnapshotManager
+from branchedmind.core.task_engine import TaskEngine
 
 # ---- Tool Definitions ----
 
@@ -332,6 +334,139 @@ TOOL_DEFINITIONS: list[Tool] = [
             "required": ["timestamp", "query"],
         },
     ),
+    # === Task Management ===
+    Tool(
+        name="memory_task_create",
+        description="Create a long-running task. Creates a task branch and optionally defines objectives.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Task name (e.g. 'fix-oauth2-bug')"},
+                "description": {"type": "string", "description": "What this task aims to accomplish"},
+                "task_type": {
+                    "type": "string",
+                    "description": "Type: bug_fix, pr_review, feature, research, refactor, incident",
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Cross-cutting labels for discovery (e.g. ['auth', 'security'])",
+                },
+                "objectives": {
+                    "type": "array",
+                    "items": {"type": "object", "properties": {"description": {"type": "string"}}},
+                    "description": "Ordered list of objectives/subtasks",
+                },
+                "parent_branch": {"type": "string", "description": "Branch to fork from (default: main)"},
+            },
+            "required": ["name"],
+        },
+    ),
+    Tool(
+        name="memory_task_join",
+        description="Join an agent to a task. Creates an isolated agent branch and returns full task context.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string", "description": "Task ID to join"},
+                "agent_id": {"type": "string", "description": "Unique agent identifier (global, cross-task)"},
+                "role": {"type": "string", "description": "Agent role: implementer, reviewer, tester"},
+                "objectives": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "Objective IDs this agent will work on",
+                },
+            },
+            "required": ["task_id", "agent_id"],
+        },
+    ),
+    Tool(
+        name="memory_task_status",
+        description="Get comprehensive task status: objectives, agents, progress, and recent activity.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string", "description": "Task ID"},
+            },
+            "required": ["task_id"],
+        },
+    ),
+    Tool(
+        name="memory_task_update",
+        description="Update a task's objectives or status. Mark objectives as done/blocked/active.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string"},
+                "objective_id": {"type": "integer", "description": "Objective to update"},
+                "objective_status": {"type": "string", "enum": ["done", "active", "todo", "blocked"]},
+                "agent_id": {"type": "string", "description": "Agent making the update"},
+                "notes": {"type": "string", "description": "Notes about completion or blockers"},
+                "task_status": {"type": "string", "enum": ["active", "completed", "paused", "failed"]},
+            },
+            "required": ["task_id"],
+        },
+    ),
+    # === Consolidation ===
+    Tool(
+        name="memory_consolidate",
+        description="Consolidate memory: distill observations into facts, deduplicate, and merge to parent scope.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "scope": {
+                    "type": "string",
+                    "enum": ["session", "agent", "task"],
+                    "description": "What level to consolidate",
+                },
+                "task_id": {"type": "string", "description": "Required for agent/task scope"},
+                "agent_id": {"type": "string", "description": "Required for agent scope"},
+                "session_id": {"type": "string", "description": "Required for session scope"},
+                "branch": {"type": "string", "description": "Branch for session scope"},
+            },
+            "required": ["scope"],
+        },
+    ),
+    # === Replay & Cross-Branch Search ===
+    Tool(
+        name="memory_search_task",
+        description="Search across a task's memory including all agent branches. Returns results with source attribution.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string", "description": "Task ID to search within"},
+                "query": {"type": "string", "description": "Search query"},
+                "agent_id": {"type": "string", "description": "Filter to a specific agent's memories"},
+                "limit": {"type": "integer", "description": "Max results (default: 10)"},
+            },
+            "required": ["task_id", "query"],
+        },
+    ),
+    Tool(
+        name="memory_agent_timeline",
+        description="Get the complete timeline for a specific agent across all tasks.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "agent_id": {"type": "string", "description": "Agent ID to replay"},
+                "task_type": {"type": "string", "description": "Filter by task type"},
+                "limit": {"type": "integer", "description": "Max items (default: 50)"},
+            },
+            "required": ["agent_id"],
+        },
+    ),
+    Tool(
+        name="memory_replay_task_type",
+        description="Aggregate analysis of all tasks of a given type. Shows patterns, success rates, key findings.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "task_type": {"type": "string", "description": "Task type to analyze"},
+                "limit": {"type": "integer", "description": "Max tasks to include (default: 20)"},
+            },
+            "required": ["task_type"],
+        },
+    ),
 ]
 
 
@@ -538,6 +673,99 @@ async def handle_tool_call(
             branch_name=branch,
         )
         return {"timestamp": arguments["timestamp"], "results": results}
+
+    # === Task Management ===
+    elif name == "memory_task_create":
+        engine = TaskEngine(session)
+        task = await engine.create_task(
+            name=arguments["name"],
+            description=arguments.get("description"),
+            task_type=arguments.get("task_type"),
+            tags=arguments.get("tags"),
+            objectives=arguments.get("objectives"),
+            parent_branch=arguments.get("parent_branch", "main"),
+        )
+        return {
+            "task_id": task.id,
+            "branch_name": task.branch_name,
+            "objectives": task.objectives,
+        }
+
+    elif name == "memory_task_join":
+        engine = TaskEngine(session)
+        result = await engine.join_task(
+            task_id=arguments["task_id"],
+            agent_id=arguments["agent_id"],
+            role=arguments.get("role"),
+            assigned_objectives=arguments.get("objectives"),
+        )
+        return result
+
+    elif name == "memory_task_status":
+        engine = TaskEngine(session)
+        return await engine.get_task_context(arguments["task_id"])
+
+    elif name == "memory_task_update":
+        engine = TaskEngine(session)
+        if arguments.get("objective_id") and arguments.get("objective_status"):
+            task = await engine.update_objective(
+                task_id=arguments["task_id"],
+                objective_id=arguments["objective_id"],
+                status=arguments["objective_status"],
+                agent_id=arguments.get("agent_id"),
+                notes=arguments.get("notes"),
+            )
+            return {"objectives": task.objectives}
+        return {"error": "Must provide objective_id and objective_status"}
+
+    # === Consolidation ===
+    elif name == "memory_consolidate":
+        consolidation = ConsolidationEngine(session)
+        scope = arguments["scope"]
+        if scope == "session":
+            return await consolidation.consolidate_session(
+                session_id=arguments.get("session_id", "unknown"),
+                branch_name=arguments.get("branch", branch),
+                task_id=arguments.get("task_id"),
+                agent_id=arguments.get("agent_id"),
+            )
+        elif scope == "agent":
+            return await consolidation.consolidate_agent(
+                task_id=arguments["task_id"],
+                agent_id=arguments["agent_id"],
+            )
+        elif scope == "task":
+            return await consolidation.consolidate_task(
+                task_id=arguments["task_id"],
+            )
+        return {"error": f"Unknown scope: {scope}"}
+
+    # === Replay & Cross-Branch Search ===
+    elif name == "memory_search_task":
+        engine = SearchEngine(session, embedder)
+        return {
+            "results": await engine.search_cross_branch(
+                query=arguments["query"],
+                task_id=arguments["task_id"],
+                agent_id=arguments.get("agent_id"),
+                limit=arguments.get("limit", 10),
+            )
+        }
+
+    elif name == "memory_agent_timeline":
+        engine = TaskEngine(session)
+        return await engine.replay_agent(
+            agent_id=arguments["agent_id"],
+            task_type=arguments.get("task_type"),
+            limit=arguments.get("limit", 50),
+        )
+
+    elif name == "memory_replay_task_type":
+        engine = TaskEngine(session)
+        return await engine.replay_task_type(
+            task_type=arguments["task_type"],
+            limit=arguments.get("limit", 20),
+        )
 
     else:
         return {"error": f"Unknown tool: {name}"}

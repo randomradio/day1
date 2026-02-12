@@ -1,12 +1,14 @@
 """PostToolUse hook: capture tool call observations asynchronously.
 
 Invoked after each tool call in Claude Code.
-Compresses the observation and stores it in memory.
+Compresses the observation and stores it in memory,
+including task and agent context when available.
 """
 
 from __future__ import annotations
 
 import asyncio
+import os
 
 from branchedmind.core.embedding import get_embedding_provider
 from branchedmind.core.observation_engine import ObservationEngine
@@ -31,6 +33,10 @@ async def handler(input_data: dict) -> dict:
     tool_input = input_data.get("tool_input", "")
     tool_response = input_data.get("tool_response", "")
 
+    # Read task/agent context from environment
+    task_id = os.environ.get("BM_TASK_ID")
+    agent_id = os.environ.get("BM_AGENT_ID")
+
     # Compress observation: extract key information
     summary = _compress_observation(tool_name, tool_input, tool_response)
 
@@ -41,6 +47,8 @@ async def handler(input_data: dict) -> dict:
         summary=summary,
         raw_input=str(tool_input)[:2000],
         raw_output=str(tool_response)[:2000],
+        task_id=task_id,
+        agent_id=agent_id,
     )
 
     await session.close()

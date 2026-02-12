@@ -1,13 +1,16 @@
-"""SessionEnd hook: generate final session summary.
+"""SessionEnd hook: generate final session summary and consolidate.
 
 Invoked when a Claude Code session ends.
-Creates a comprehensive summary and marks the session as completed.
+Creates a comprehensive summary, triggers consolidation if in a task context,
+and marks the session as completed.
 """
 
 from __future__ import annotations
 
 import asyncio
+import os
 
+from branchedmind.core.consolidation_engine import ConsolidationEngine
 from branchedmind.core.embedding import get_embedding_provider
 from branchedmind.core.observation_engine import ObservationEngine
 from branchedmind.core.session_manager import SessionManager
@@ -20,7 +23,7 @@ from branchedmind.hooks.base import (
 
 
 async def handler(input_data: dict) -> dict:
-    """Generate final summary and close session."""
+    """Generate final summary, consolidate, and close session."""
     session = await get_db_session()
     if session is None:
         return {}
@@ -30,6 +33,8 @@ async def handler(input_data: dict) -> dict:
     session_mgr = SessionManager(session)
 
     sid = get_session_id()
+    task_id = os.environ.get("BM_TASK_ID")
+    agent_id = os.environ.get("BM_AGENT_ID")
 
     # Gather all observations from this session for summary
     observations = await obs_engine.list_observations(
@@ -45,7 +50,25 @@ async def handler(input_data: dict) -> dict:
             session_id=sid,
             observation_type="insight",
             summary=f"Session summary: {summary}",
+            task_id=task_id,
+            agent_id=agent_id,
         )
+
+    # Trigger session-level consolidation if in a task context
+    consolidation_result = None
+    if task_id:
+        try:
+            consolidator = ConsolidationEngine(session)
+            sess_record = await session_mgr.get_session(sid)
+            branch = sess_record.branch_name if sess_record else "main"
+            consolidation_result = await consolidator.consolidate_session(
+                session_id=sid,
+                branch_name=branch,
+                task_id=task_id,
+                agent_id=agent_id,
+            )
+        except Exception:
+            pass  # Graceful degradation
 
     # Mark session as completed
     await session_mgr.end_session(session_id=sid, summary=summary)
