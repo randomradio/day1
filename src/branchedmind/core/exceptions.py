@@ -1,0 +1,33 @@
+"""Custom exceptions for BranchedMind."""
+
+
+class BranchedMindError(Exception):
+    """Base exception for all BranchedMind errors."""
+
+
+class DatabaseError(BranchedMindError):
+    """Database operation failed."""
+
+
+class BranchNotFoundError(BranchedMindError):
+    """Requested branch does not exist."""
+
+
+class BranchExistsError(BranchedMindError):
+    """Branch with this name already exists."""
+
+
+class FactNotFoundError(BranchedMindError):
+    """Requested fact does not exist."""
+
+
+class MergeConflictError(BranchedMindError):
+    """Merge conflict that requires resolution."""
+
+
+class EmbeddingError(BranchedMindError):
+    """Embedding generation failed."""
+
+
+class SnapshotError(BranchedMindError):
+    """Snapshot operation failed."""
