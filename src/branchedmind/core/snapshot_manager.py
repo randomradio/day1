@@ -8,9 +8,14 @@ from datetime import datetime
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from branchedmind.config import settings
 from branchedmind.core.branch_manager import _branch_table
 from branchedmind.core.exceptions import SnapshotError
+from branchedmind.db.engine import get_autocommit_conn
 from branchedmind.db.models import Fact, Observation, Relation, Snapshot
+
+# Extract database name from connection URL for SNAPSHOT commands
+_db_name = settings.database_url.rsplit("/", 1)[-1].split("?")[0]
 
 
 class SnapshotManager:
@@ -97,9 +102,11 @@ class SnapshotManager:
         safe_label = re.sub(r"[^a-zA-Z0-9_]", "_", label or branch_name)
         snap_name = f"sp_{safe_label}_{int(datetime.utcnow().timestamp())}"
 
-        await self._session.execute(
-            text(f"CREATE SNAPSHOT {snap_name} FOR DATABASE branchedmind")
-        )
+        # CREATE SNAPSHOT requires autocommit (not inside a transaction)
+        async with get_autocommit_conn() as ac:
+            await ac.execute(
+                text(f"CREATE SNAPSHOT {snap_name} FOR DATABASE `{_db_name}`")
+            )
 
         # Also save to snapshots table for tracking
         snapshot = Snapshot(

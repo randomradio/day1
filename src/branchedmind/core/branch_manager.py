@@ -9,6 +9,7 @@ from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from branchedmind.core.exceptions import BranchExistsError, BranchNotFoundError
+from branchedmind.db.engine import get_autocommit_conn
 from branchedmind.db.models import BranchRegistry
 
 # Tables that participate in branching via DATA BRANCH CREATE TABLE
@@ -86,13 +87,17 @@ class BranchManager:
         if parent.scalar_one_or_none() is None:
             raise BranchNotFoundError(f"Parent branch '{parent_branch}' not found")
 
-        # MO native: zero-copy branch per table
-        for table in BRANCH_TABLES:
-            parent_tbl = _branch_table(table, parent_branch)
-            branch_tbl = _branch_table(table, branch_name)
-            await self._session.execute(
-                text(f"DATA BRANCH CREATE TABLE {branch_tbl} FROM {parent_tbl}")
-            )
+        # Flush pending ORM work before switching to autocommit
+        await self._session.flush()
+
+        # MO native: zero-copy branch per table (requires autocommit)
+        async with get_autocommit_conn() as ac:
+            for table in BRANCH_TABLES:
+                parent_tbl = _branch_table(table, parent_branch)
+                branch_tbl = _branch_table(table, branch_name)
+                await ac.execute(
+                    text(f"DATA BRANCH CREATE TABLE `{branch_tbl}` FROM `{parent_tbl}`")
+                )
 
         # Register the branch
         registry = BranchRegistry(
@@ -143,17 +148,18 @@ class BranchManager:
         await self.get_branch(target_branch)
 
         all_diffs: list[dict] = []
-        for table in BRANCH_TABLES:
-            src = _branch_table(table, source_branch)
-            tgt = _branch_table(table, target_branch)
-            result = await self._session.execute(
-                text(f"DATA BRANCH DIFF {src} AGAINST {tgt}")
-            )
-            columns = list(result.keys())
-            for row in result.fetchall():
-                row_dict = dict(zip(columns, row))
-                row_dict["_table"] = table
-                all_diffs.append(row_dict)
+        async with get_autocommit_conn() as ac:
+            for table in BRANCH_TABLES:
+                src = _branch_table(table, source_branch)
+                tgt = _branch_table(table, target_branch)
+                result = await ac.execute(
+                    text(f"DATA BRANCH DIFF `{src}` AGAINST `{tgt}`")
+                )
+                columns = list(result.keys())
+                for row in result.fetchall():
+                    row_dict = dict(zip(columns, row))
+                    row_dict["_table"] = table
+                    all_diffs.append(row_dict)
         return all_diffs
 
     async def diff_branch_count(
@@ -166,14 +172,15 @@ class BranchManager:
         await self.get_branch(target_branch)
 
         counts: dict[str, int] = {}
-        for table in BRANCH_TABLES:
-            src = _branch_table(table, source_branch)
-            tgt = _branch_table(table, target_branch)
-            result = await self._session.execute(
-                text(f"DATA BRANCH DIFF {src} AGAINST {tgt} OUTPUT COUNT")
-            )
-            row = result.fetchone()
-            counts[table] = int(row[0]) if row else 0
+        async with get_autocommit_conn() as ac:
+            for table in BRANCH_TABLES:
+                src = _branch_table(table, source_branch)
+                tgt = _branch_table(table, target_branch)
+                result = await ac.execute(
+                    text(f"DATA BRANCH DIFF `{src}` AGAINST `{tgt}` OUTPUT COUNT")
+                )
+                row = result.fetchone()
+                counts[table] = int(row[0]) if row else 0
         return counts
 
     async def merge_branch_native(
@@ -199,12 +206,13 @@ class BranchManager:
         if conflict in ("skip", "accept"):
             conflict_clause = f" WHEN CONFLICT {conflict.upper()}"
 
-        for table in BRANCH_TABLES:
-            src = _branch_table(table, source_branch)
-            tgt = _branch_table(table, target_branch)
-            await self._session.execute(
-                text(f"DATA BRANCH MERGE {src} INTO {tgt}{conflict_clause}")
-            )
+        async with get_autocommit_conn() as ac:
+            for table in BRANCH_TABLES:
+                src = _branch_table(table, source_branch)
+                tgt = _branch_table(table, target_branch)
+                await ac.execute(
+                    text(f"DATA BRANCH MERGE `{src}` INTO `{tgt}`{conflict_clause}")
+                )
 
         # Update branch status
         await self._session.execute(
@@ -232,10 +240,11 @@ class BranchManager:
         if branch_name == "main":
             raise BranchExistsError("Cannot archive the main branch")
 
-        # Drop branch-specific tables
-        for table in BRANCH_TABLES:
-            tbl = _branch_table(table, branch_name)
-            await self._session.execute(text(f"DROP TABLE IF EXISTS {tbl}"))
+        # Drop branch-specific tables (autocommit for DDL)
+        async with get_autocommit_conn() as ac:
+            for table in BRANCH_TABLES:
+                tbl = _branch_table(table, branch_name)
+                await ac.execute(text(f"DROP TABLE IF EXISTS `{tbl}`"))
 
         await self._session.execute(
             update(BranchRegistry)

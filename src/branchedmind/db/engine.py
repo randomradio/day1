@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
+    AsyncConnection,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
@@ -60,6 +62,18 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """Yield an async database session."""
     async with _session_factory() as session:
         yield session
+
+
+@asynccontextmanager
+async def get_autocommit_conn() -> AsyncGenerator[AsyncConnection, None]:
+    """Yield an autocommit connection for MO DDL-like operations.
+
+    MO's DATA BRANCH (CREATE/DIFF/MERGE) and CREATE SNAPSHOT cannot
+    run inside an uncommitted transaction.  Use this helper for those.
+    """
+    async with _engine.connect() as raw_conn:
+        conn = await raw_conn.execution_options(isolation_level="AUTOCOMMIT")
+        yield conn
 
 
 def get_engine():
