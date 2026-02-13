@@ -103,7 +103,7 @@ async def main() -> None:
                 "  fact_text TEXT,"
                 "  embedding TEXT,"
                 "  category VARCHAR(50),"
-                "  metadata JSON,"
+                "  metadata TEXT,"
                 "  created_at DATETIME DEFAULT NOW()"
                 ")"
             ))

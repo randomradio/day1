@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime
 
@@ -13,6 +14,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    TypeDecorator,
     func,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -20,6 +22,31 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 def _uuid() -> str:
     return str(uuid.uuid4())
+
+
+class JsonText(TypeDecorator):
+    """JSON stored as TEXT for MO DATA BRANCH DIFF compatibility.
+
+    MO's DATA BRANCH DIFF cannot handle MySQL type 245 (JSON) in result
+    sets.  This type stores JSON-serialised TEXT in the database so DIFF
+    works, while presenting ``dict`` / ``list`` to Python code.
+
+    Use on branch-participating tables (facts, relations, observations).
+    Non-branched tables (sessions, snapshots, …) can keep native JSON.
+    """
+
+    impl = Text
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is not None:
+            return json.dumps(value, ensure_ascii=False)
+        return None
+
+    def process_result_value(self, value, dialect):
+        if value is not None:
+            return json.loads(value)
+        return None
 
 
 class Base(DeclarativeBase):
@@ -45,7 +72,7 @@ class Fact(Base):
     task_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     agent_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     metadata_json: Mapped[dict | None] = mapped_column(
-        "metadata", JSON, nullable=True
+        "metadata", JsonText, nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now()
@@ -74,7 +101,7 @@ class Relation(Base):
     source_entity: Mapped[str] = mapped_column(String(200), nullable=False)
     target_entity: Mapped[str] = mapped_column(String(200), nullable=False)
     relation_type: Mapped[str] = mapped_column(String(100), nullable=False)
-    properties: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    properties: Mapped[dict | None] = mapped_column(JsonText, nullable=True)
     confidence: Mapped[float] = mapped_column(Float, default=1.0)
     valid_from: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now()
@@ -117,7 +144,7 @@ class Observation(Base):
     )
     outcome: Mapped[str | None] = mapped_column(String(20), nullable=True)
     metadata_json: Mapped[dict | None] = mapped_column(
-        "metadata", JSON, nullable=True
+        "metadata", JsonText, nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now()
