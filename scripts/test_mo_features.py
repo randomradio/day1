@@ -171,23 +171,32 @@ async def main() -> None:
     # =========================================================
     # Phase 2: MO-native operations (requires AUTOCOMMIT)
     #   DATA BRANCH and CREATE SNAPSHOT cannot run inside a txn.
+    #   Each test gets its own connection so a lost-connection
+    #   failure in one test does not cascade to subsequent tests.
     # =========================================================
     print("\n--- Phase 2: MO Native (autocommit) ---")
 
-    async with engine.connect() as raw_conn:
-        conn = await raw_conn.execution_options(isolation_level="AUTOCOMMIT")
+    async def _autocommit_conn():
+        raw = await engine.connect()
+        return await raw.execution_options(isolation_level="AUTOCOMMIT")
 
-        # 5. DATA BRANCH CREATE TABLE
-        async def test_branch_create():
+    # 5. DATA BRANCH CREATE TABLE
+    async def test_branch_create():
+        conn = await _autocommit_conn()
+        try:
             await conn.execute(text(
                 "DATA BRANCH CREATE TABLE `bm_test_branch` FROM `bm_test_main`"
             ))
             r = await conn.execute(text("SELECT COUNT(*) FROM `bm_test_branch`"))
             assert r.scalar() == 3, "Branch should have 3 rows"
-        await run_test("5. DATA BRANCH CREATE TABLE", test_branch_create())
+        finally:
+            await conn.close()
+    await run_test("5. DATA BRANCH CREATE TABLE", test_branch_create())
 
-        # 6. Insert into branch table
-        async def test_branch_insert():
+    # 6. Insert into branch table
+    async def test_branch_insert():
+        conn = await _autocommit_conn()
+        try:
             await conn.execute(text(
                 "INSERT INTO `bm_test_branch` (id, fact_text, category) "
                 "VALUES ('t4', 'Branch-only fact', 'test')"
@@ -196,29 +205,41 @@ async def main() -> None:
             assert r.scalar() == 4, "Branch should have 4 rows"
             r2 = await conn.execute(text("SELECT COUNT(*) FROM `bm_test_main`"))
             assert r2.scalar() == 3, "Main should still have 3 rows"
-        await run_test("6. Insert into branch table", test_branch_insert())
+        finally:
+            await conn.close()
+    await run_test("6. Insert into branch table", test_branch_insert())
 
-        # 7. DATA BRANCH DIFF
-        async def test_diff():
+    # 7. DATA BRANCH DIFF
+    async def test_diff():
+        conn = await _autocommit_conn()
+        try:
             r = await conn.execute(text(
                 "DATA BRANCH DIFF `bm_test_branch` AGAINST `bm_test_main`"
             ))
             rows = r.fetchall()
             assert len(rows) >= 1, f"Expected diffs, got {len(rows)}"
-        await run_test("7. DATA BRANCH DIFF", test_diff())
+        finally:
+            await conn.close()
+    await run_test("7. DATA BRANCH DIFF", test_diff())
 
-        # 8. DATA BRANCH DIFF OUTPUT COUNT
-        async def test_diff_count():
+    # 8. DATA BRANCH DIFF OUTPUT COUNT
+    async def test_diff_count():
+        conn = await _autocommit_conn()
+        try:
             r = await conn.execute(text(
                 "DATA BRANCH DIFF `bm_test_branch` AGAINST `bm_test_main` OUTPUT COUNT"
             ))
             row = r.fetchone()
             assert row is not None, "Expected count result"
             assert int(row[0]) >= 1, f"Expected count >= 1, got {row[0]}"
-        await run_test("8. DATA BRANCH DIFF OUTPUT COUNT", test_diff_count())
+        finally:
+            await conn.close()
+    await run_test("8. DATA BRANCH DIFF OUTPUT COUNT", test_diff_count())
 
-        # 9. DATA BRANCH MERGE (SKIP)
-        async def test_merge_skip():
+    # 9. DATA BRANCH MERGE (SKIP)
+    async def test_merge_skip():
+        conn = await _autocommit_conn()
+        try:
             await conn.execute(text(
                 "DATA BRANCH CREATE TABLE `bm_test_branch2` FROM `bm_test_main`"
             ))
@@ -231,24 +252,34 @@ async def main() -> None:
             ))
             r = await conn.execute(text("SELECT COUNT(*) FROM `bm_test_main`"))
             assert r.scalar() >= 4, "Main should have merged rows"
-        await run_test("9. DATA BRANCH MERGE (WHEN CONFLICT SKIP)", test_merge_skip())
+        finally:
+            await conn.close()
+    await run_test("9. DATA BRANCH MERGE (WHEN CONFLICT SKIP)", test_merge_skip())
 
-        # 10. DATA BRANCH MERGE (ACCEPT)
-        async def test_merge_accept():
+    # 10. DATA BRANCH MERGE (ACCEPT)
+    async def test_merge_accept():
+        conn = await _autocommit_conn()
+        try:
             await conn.execute(text(
                 "DATA BRANCH MERGE `bm_test_branch` INTO `bm_test_main` WHEN CONFLICT ACCEPT"
             ))
             r = await conn.execute(text("SELECT COUNT(*) FROM `bm_test_main`"))
             count = r.scalar()
             assert count >= 4, f"Main should have >= 4 rows, got {count}"
-        await run_test("10. DATA BRANCH MERGE (WHEN CONFLICT ACCEPT)", test_merge_accept())
+        finally:
+            await conn.close()
+    await run_test("10. DATA BRANCH MERGE (WHEN CONFLICT ACCEPT)", test_merge_accept())
 
-        # 11. CREATE SNAPSHOT FOR TABLE
-        async def test_snapshot():
+    # 11. CREATE SNAPSHOT FOR TABLE
+    async def test_snapshot():
+        conn = await _autocommit_conn()
+        try:
             await conn.execute(text(
                 f"CREATE SNAPSHOT bm_test_snap FOR TABLE `{db_name}` `bm_test_main`"
             ))
-        await run_test("11. CREATE SNAPSHOT FOR TABLE", test_snapshot())
+        finally:
+            await conn.close()
+    await run_test("11. CREATE SNAPSHOT FOR TABLE", test_snapshot())
 
     # =========================================================
     # Phase 3: More standard SQL + cleanup
