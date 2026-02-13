@@ -13,35 +13,31 @@ cd "$PROJECT_DIR"
 info()  { echo "==> $*"; }
 error() { echo "ERROR: $*" >&2; exit 1; }
 
-ensure_venv() {
-    if [ ! -d ".venv" ]; then
-        info "Creating virtual environment..."
-        python3 -m venv .venv
+check_uv() {
+    if ! command -v uv &>/dev/null; then
+        error "uv not found. Install: curl -LsSf https://astral.sh/uv/install.sh | sh"
     fi
-    # shellcheck disable=SC1091
-    source .venv/bin/activate
-    info "Using Python: $(python --version) at $(which python)"
 }
 
 install_deps() {
-    ensure_venv
-    info "Installing Python dependencies..."
-    pip install -e ".[dev]" -q
+    check_uv
+    info "Syncing Python dependencies via uv..."
+    uv sync --all-extras
 }
 
 # ─── commands ───────────────────────────────────────────
 cmd_test() {
-    ensure_venv
+    check_uv
     info "Running MO feature tests..."
-    python scripts/test_mo_features.py
+    uv run python scripts/test_mo_features.py
 }
 
 cmd_api() {
-    ensure_venv
+    check_uv
     info "Starting FastAPI server on http://127.0.0.1:8000 ..."
     info "  Docs: http://127.0.0.1:8000/docs"
     info "  Health: http://127.0.0.1:8000/health"
-    uvicorn branchedmind.api.app:app --reload --host 127.0.0.1 --port 8000
+    uv run uvicorn branchedmind.api.app:app --reload --host 127.0.0.1 --port 8000
 }
 
 cmd_dashboard() {
@@ -60,8 +56,7 @@ cmd_all() {
     cmd_test
     info ""
     info "Step 2: Starting API server (background)..."
-    ensure_venv
-    uvicorn branchedmind.api.app:app --reload --host 127.0.0.1 --port 8000 &
+    uv run uvicorn branchedmind.api.app:app --reload --host 127.0.0.1 --port 8000 &
     API_PID=$!
     sleep 2
     info "  API PID: $API_PID"
@@ -85,12 +80,13 @@ case "${1:-help}" in
         echo "Usage: bash scripts/run.sh <command>"
         echo ""
         echo "Commands:"
-        echo "  install     Install Python dependencies"
+        echo "  install     Sync Python dependencies (uv sync)"
         echo "  test        Verify MO connection & features"
         echo "  api         Start FastAPI server (:8000)"
         echo "  dashboard   Start React dashboard (:5173)"
         echo "  all         Test + API + Dashboard"
         echo ""
+        echo "Requires: uv (https://docs.astral.sh/uv/)"
         echo "MO Cloud connection is pre-configured in config.py."
         echo "Override with: export BM_DATABASE_URL=\"mysql+aiomysql://...\""
         ;;

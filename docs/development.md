@@ -2,6 +2,12 @@
 
 Commands for setting up, running, and testing BranchedMind. Read this when setting up env or running builds/tests.
 
+## Prerequisites
+
+- Python 3.11+
+- [uv](https://docs.astral.sh/uv/) (package manager)
+- Node.js 18+ (for dashboard)
+
 ## Environment Setup
 
 ```bash
@@ -9,13 +15,8 @@ Commands for setting up, running, and testing BranchedMind. Read this when setti
 git clone git@github.com:randomradio/day1.git
 cd day1
 
-# Create venv
-python -m venv .venv
-source .venv/bin/activate  # Linux/mac
-# .venv\Scripts\activate   # Windows
-
-# Install dependencies (aiomysql included in main deps)
-pip install -e ".[dev]"
+# Install all dependencies (creates .venv automatically)
+uv sync --all-extras
 ```
 
 ## MatrixOne Database
@@ -26,7 +27,7 @@ The default connection is pre-configured in `config.py`. No env vars needed to g
 
 ```bash
 # Verify MO features (uses default connection)
-python scripts/test_mo_features.py
+uv run python scripts/test_mo_features.py
 
 # Or connect directly via mycli/mysql for debugging
 mycli -h freetier-01.cn-hangzhou.cluster.matrixonecloud.cn -P 6001 \
@@ -60,7 +61,7 @@ docker exec -it matrixone mysql -h 127.0.0.1 -P 6001 -uroot -p111
 bash scripts/run.sh all
 
 # Or run individual commands:
-bash scripts/run.sh install     # Install Python deps
+bash scripts/run.sh install     # uv sync --all-extras
 bash scripts/run.sh test        # Verify MO connection & features
 bash scripts/run.sh api         # Start FastAPI server (:8000)
 bash scripts/run.sh dashboard   # Start React dashboard (:5173)
@@ -70,16 +71,16 @@ bash scripts/run.sh dashboard   # Start React dashboard (:5173)
 
 ```bash
 # FastAPI REST API
-uvicorn branchedmind.api.app:app --reload --port 8000
+uv run uvicorn branchedmind.api.app:app --reload --port 8000
 
 # FastAPI with debug
-uvicorn branchedmind.api.app:app --reload --port 8000 --log-level debug
+uv run uvicorn branchedmind.api.app:app --reload --port 8000 --log-level debug
 
 # MCP server (stdio mode) - for Claude Code integration
-python -m branchedmind.mcp.server
+uv run python -m branchedmind.mcp.server
 
 # MCP server (SSE mode) - for testing/debug
-uvicorn branchedmind.mcp.server_http:app --reload --port 3001
+uv run uvicorn branchedmind.mcp.server_http:app --reload --port 3001
 ```
 
 ## Dashboard (Frontend)
@@ -101,10 +102,10 @@ npx tsc --noEmit
 
 ```bash
 # Verify MO features (branch/diff/merge/vector/fulltext/time-travel)
-python scripts/test_mo_features.py
+uv run python scripts/test_mo_features.py
 
 # Run migrations
-python -m scripts.migrate
+uv run python -m scripts.migrate
 
 # Create snapshot (native MO)
 curl -X POST http://localhost:8000/api/v1/snapshots -H 'Content-Type: application/json' -d '{"native": true, "label": "before-refactor"}'
@@ -114,59 +115,59 @@ curl -X POST http://localhost:8000/api/v1/snapshots -H 'Content-Type: applicatio
 
 ```bash
 # Run all tests (requires MO connection)
-pytest
+uv run pytest
 
 # Run specific test
-pytest tests/test_core/test_fact_engine.py
+uv run pytest tests/test_core/test_fact_engine.py
 
 # Run with coverage
-pytest --cov=src --cov-report=html --cov-report=term
+uv run pytest --cov=src --cov-report=html --cov-report=term
 
 # Run only fast tests (skip integration)
-pytest -m "not integration"
+uv run pytest -m "not integration"
 
 # Run only integration tests
-pytest -m integration
+uv run pytest -m integration
 
 # Use a specific MO connection for tests
-BM_TEST_DATABASE_URL="mysql+aiomysql://root:111@localhost:6001/branchedmind_test" pytest
+BM_TEST_DATABASE_URL="mysql+aiomysql://root:111@localhost:6001/branchedmind_test" uv run pytest
 ```
 
 ## Linting & Type Checking
 
 ```bash
 # Type check
-mypy src
+uv run mypy src
 
 # Lint check
-ruff check src
+uv run ruff check src
 
 # Auto-fix lint issues
-ruff check --fix src
+uv run ruff check --fix src
 
 # Format code
-black src tests
+uv run black src tests
 
 # Format check only (don't write)
-black --check src tests
+uv run black --check src tests
 ```
 
-## Pre-commit
+## Adding Dependencies
 
 ```bash
-# Install hooks
-pre-commit install
+# Add a runtime dependency
+uv add <package>
 
-# Run manually on all files
-pre-commit run --all-files
+# Add a dev dependency
+uv add --group dev <package>
 
-# Run on staged files only
-pre-commit run
+# Remove a dependency
+uv remove <package>
 ```
 
 ## Useful Combinations
 
 ```bash
 # Full check before commit (format + lint + type + test)
-black src tests && ruff check src && mypy src && pytest
+uv run black src tests && uv run ruff check src && uv run mypy src && uv run pytest
 ```
