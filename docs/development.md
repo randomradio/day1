@@ -20,14 +20,21 @@ pip install -e ".[dev]"
 
 ## MatrixOne Database
 
-### Option A: MO Cloud (Recommended)
+### Option A: MO Cloud (Default)
+
+The default connection is pre-configured in `config.py`. No env vars needed to get started.
 
 ```bash
-# Set connection string (MO Cloud)
-export BM_DATABASE_URL="mysql+aiomysql://0193bd50-818d-76ba-bb43-a2abd031d6e5%3Aadmin%3Aaccountadmin:AIcon2024@freetier-01.cn-hangzhou.cluster.matrixonecloud.cn:6001/branchedmind"
-
-# Verify MO features
+# Verify MO features (uses default connection)
 python scripts/test_mo_features.py
+
+# Or connect directly via mycli/mysql for debugging
+mycli -h freetier-01.cn-hangzhou.cluster.matrixonecloud.cn -P 6001 \
+  -u "019584b6-c2e4-7e8b-a2fb-491bbf9424a7:admin:accountadmin" \
+  -p"rusryZ-borbu7-zodwob" jst_app
+
+# Override connection via env var if needed
+export BM_DATABASE_URL="mysql+aiomysql://019584b6-c2e4-7e8b-a2fb-491bbf9424a7%3Aadmin%3Aaccountadmin:rusryZ-borbu7-zodwob@freetier-01.cn-hangzhou.cluster.matrixonecloud.cn:6001/jst_app"
 ```
 
 ### Option B: Local Docker
@@ -46,7 +53,20 @@ export BM_DATABASE_URL="mysql+aiomysql://root:111@127.0.0.1:6001/branchedmind"
 docker exec -it matrixone mysql -h 127.0.0.1 -P 6001 -uroot -p111
 ```
 
-## Running Services
+## Quick Start (run.sh)
+
+```bash
+# One-command: install + test MO + start API + start dashboard
+bash scripts/run.sh all
+
+# Or run individual commands:
+bash scripts/run.sh install     # Install Python deps
+bash scripts/run.sh test        # Verify MO connection & features
+bash scripts/run.sh api         # Start FastAPI server (:8000)
+bash scripts/run.sh dashboard   # Start React dashboard (:5173)
+```
+
+## Running Services (Manual)
 
 ```bash
 # FastAPI REST API

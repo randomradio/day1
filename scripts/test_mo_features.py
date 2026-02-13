@@ -35,7 +35,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 async def main() -> None:
     url = os.environ.get(
         "BM_DATABASE_URL",
-        "mysql+aiomysql://root:111@127.0.0.1:6001/branchedmind",
+        "mysql+aiomysql://019584b6-c2e4-7e8b-a2fb-491bbf9424a7%3Aadmin%3Aaccountadmin:rusryZ-borbu7-zodwob@freetier-01.cn-hangzhou.cluster.matrixonecloud.cn:6001/jst_app",
     )
     engine = create_async_engine(url, echo=False)
     passed = 0
@@ -59,6 +59,24 @@ async def main() -> None:
 
     print(f"Connecting to: {url.split('@')[-1] if '@' in url else url}")
     print("=" * 60)
+
+    try:
+        async with engine.begin() as test_conn:
+            await test_conn.execute(text("SELECT 1"))
+    except Exception as e:
+        err = str(e)
+        if "name resolution" in err or "Can't connect" in err:
+            print(f"  [ERROR] Cannot connect to database: {err[:120]}")
+            print("")
+            print("  Possible causes:")
+            print("    - No network access (sandbox/CI environment)")
+            print("    - MO Cloud host unreachable")
+            print("    - Wrong connection string")
+            print("")
+            print("  Set BM_DATABASE_URL to a reachable MatrixOne instance and retry.")
+            await engine.dispose()
+            sys.exit(1)
+        raise
 
     async with engine.begin() as conn:
         # Cleanup from previous runs
