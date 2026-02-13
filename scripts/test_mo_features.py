@@ -209,17 +209,25 @@ async def main() -> None:
             await conn.close()
     await run_test("6. Insert into branch table", test_branch_insert())
 
-    # 7. DATA BRANCH DIFF
+    # 7. DATA BRANCH DIFF (retry once on lost connection)
     async def test_diff():
-        conn = await _autocommit_conn()
-        try:
-            r = await conn.execute(text(
-                "DATA BRANCH DIFF `bm_test_branch` AGAINST `bm_test_main`"
-            ))
-            rows = r.fetchall()
-            assert len(rows) >= 1, f"Expected diffs, got {len(rows)}"
-        finally:
-            await conn.close()
+        last_err = None
+        for attempt in range(2):
+            conn = await _autocommit_conn()
+            try:
+                r = await conn.execute(text(
+                    "DATA BRANCH DIFF `bm_test_branch` AGAINST `bm_test_main`"
+                ))
+                rows = r.fetchall()
+                assert len(rows) >= 1, f"Expected diffs, got {len(rows)}"
+                return
+            except Exception as e:
+                last_err = e
+                if attempt == 0:
+                    await asyncio.sleep(1)
+            finally:
+                await conn.close()
+        raise last_err  # type: ignore[misc]
     await run_test("7. DATA BRANCH DIFF", test_diff())
 
     # 8. DATA BRANCH DIFF OUTPUT COUNT (with fallback)

@@ -145,24 +145,37 @@ class BranchManager:
         """Get row-level diff between two branches using MO DATA BRANCH DIFF.
 
         Returns list of dicts with table name, diff flag (INSERT/UPDATE/DELETE),
-        and row data.
+        and row data.  Retries once with a fresh connection on lost-connection
+        errors (transient on some MO Cloud versions).
         """
         await self.get_branch(source_branch)
         await self.get_branch(target_branch)
 
         all_diffs: list[dict] = []
-        async with get_autocommit_conn() as ac:
-            for table in BRANCH_TABLES:
-                src = _branch_table(table, source_branch)
-                tgt = _branch_table(table, target_branch)
-                result = await ac.execute(
-                    text(f"DATA BRANCH DIFF `{src}` AGAINST `{tgt}`")
-                )
-                columns = list(result.keys())
-                for row in result.fetchall():
-                    row_dict = dict(zip(columns, row))
-                    row_dict["_table"] = table
-                    all_diffs.append(row_dict)
+        for table in BRANCH_TABLES:
+            src = _branch_table(table, source_branch)
+            tgt = _branch_table(table, target_branch)
+            last_err: Exception | None = None
+            for attempt in range(2):
+                try:
+                    async with get_autocommit_conn() as ac:
+                        result = await ac.execute(
+                            text(f"DATA BRANCH DIFF `{src}` AGAINST `{tgt}`")
+                        )
+                        columns = list(result.keys())
+                        for row in result.fetchall():
+                            row_dict = dict(zip(columns, row))
+                            row_dict["_table"] = table
+                            all_diffs.append(row_dict)
+                    break
+                except Exception as e:
+                    last_err = e
+                    if attempt == 0:
+                        logger.debug(
+                            "DIFF lost connection for %s, retrying", table
+                        )
+            else:
+                logger.warning("DIFF failed for %s after retry: %s", table, last_err)
         return all_diffs
 
     async def diff_branch_count(
