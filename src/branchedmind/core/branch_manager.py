@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -167,20 +170,36 @@ class BranchManager:
         source_branch: str,
         target_branch: str = "main",
     ) -> dict[str, int]:
-        """Get diff counts per table using MO DATA BRANCH DIFF OUTPUT COUNT."""
+        """Get diff counts per table.
+
+        Tries MO ``DATA BRANCH DIFF … OUTPUT COUNT`` first.  If that
+        syntax is unsupported (some MO Cloud versions drop the
+        connection), falls back to counting rows from a regular DIFF.
+        """
         await self.get_branch(source_branch)
         await self.get_branch(target_branch)
 
         counts: dict[str, int] = {}
-        async with get_autocommit_conn() as ac:
-            for table in BRANCH_TABLES:
-                src = _branch_table(table, source_branch)
-                tgt = _branch_table(table, target_branch)
-                result = await ac.execute(
-                    text(f"DATA BRANCH DIFF `{src}` AGAINST `{tgt}` OUTPUT COUNT")
+        for table in BRANCH_TABLES:
+            src = _branch_table(table, source_branch)
+            tgt = _branch_table(table, target_branch)
+            try:
+                async with get_autocommit_conn() as ac:
+                    result = await ac.execute(
+                        text(f"DATA BRANCH DIFF `{src}` AGAINST `{tgt}` OUTPUT COUNT")
+                    )
+                    row = result.fetchone()
+                    counts[table] = int(row[0]) if row else 0
+            except Exception:
+                # Fallback: run plain DIFF and count rows
+                logger.debug(
+                    "OUTPUT COUNT failed for %s, falling back to row count", table
                 )
-                row = result.fetchone()
-                counts[table] = int(row[0]) if row else 0
+                async with get_autocommit_conn() as ac:
+                    result = await ac.execute(
+                        text(f"DATA BRANCH DIFF `{src}` AGAINST `{tgt}`")
+                    )
+                    counts[table] = len(result.fetchall())
         return counts
 
     async def merge_branch_native(
