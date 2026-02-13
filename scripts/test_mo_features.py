@@ -35,7 +35,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 async def main() -> None:
     url = os.environ.get(
         "BM_DATABASE_URL",
-        "mysql+aiomysql://019584b6-c2e4-7e8b-a2fb-491bbf9424a7%3Aadmin%3Aaccountadmin:rusryZ-borbu7-zodwob@freetier-01.cn-hangzhou.cluster.matrixonecloud.cn:6001/jst_app",
+        "mysql+aiomysql://0193bd50-818d-76ba-bb43-a2abd031d6e5%3Aadmin%3Aaccountadmin:AIcon2024@freetier-01.cn-hangzhou.cluster.matrixonecloud.cn:6001/branchedmind",
     )
     engine = create_async_engine(url, echo=False)
     passed = 0

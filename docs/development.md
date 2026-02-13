@@ -31,11 +31,11 @@ uv run python scripts/test_mo_features.py
 
 # Or connect directly via mycli/mysql for debugging
 mycli -h freetier-01.cn-hangzhou.cluster.matrixonecloud.cn -P 6001 \
-  -u "019584b6-c2e4-7e8b-a2fb-491bbf9424a7:admin:accountadmin" \
-  -p"rusryZ-borbu7-zodwob" jst_app
+  -u "0193bd50-818d-76ba-bb43-a2abd031d6e5:admin:accountadmin" \
+  -p"AIcon2024" branchedmind
 
 # Override connection via env var if needed
-export BM_DATABASE_URL="mysql+aiomysql://019584b6-c2e4-7e8b-a2fb-491bbf9424a7%3Aadmin%3Aaccountadmin:rusryZ-borbu7-zodwob@freetier-01.cn-hangzhou.cluster.matrixonecloud.cn:6001/jst_app"
+export BM_DATABASE_URL="mysql+aiomysql://0193bd50-818d-76ba-bb43-a2abd031d6e5%3Aadmin%3Aaccountadmin:AIcon2024@freetier-01.cn-hangzhou.cluster.matrixonecloud.cn:6001/branchedmind"
 ```
 
 ### Option B: Local Docker
