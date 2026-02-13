@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from branchedmind.core.embedding import (
     EmbeddingProvider,
-    embedding_to_bytes,
+    embedding_to_vecf32,
     get_embedding_provider,
 )
 from branchedmind.db.models import Observation
@@ -54,14 +54,14 @@ class ObservationEngine:
         Returns:
             Created Observation object.
         """
-        embedding = await self._embedder.embed(summary)
+        vec = await self._embedder.embed(summary)
 
         obs = Observation(
             session_id=session_id,
             observation_type=observation_type,
             tool_name=tool_name,
             summary=summary,
-            embedding_blob=embedding_to_bytes(embedding),
+            embedding=embedding_to_vecf32(vec),
             raw_input=raw_input,
             raw_output=raw_output,
             branch_name=branch_name,
@@ -70,16 +70,7 @@ class ObservationEngine:
             agent_id=agent_id,
         )
         self._session.add(obs)
-        await self._session.flush()
-
-        # Update FTS index
-        await self._session.execute(
-            text(
-                "INSERT INTO observations_fts(id, summary, tool_name) "
-                "VALUES (:id, :summary, :tool)"
-            ),
-            {"id": obs.id, "summary": summary, "tool": tool_name or ""},
-        )
+        # MO FULLTEXT INDEX auto-indexes — no manual FTS insert needed
         await self._session.commit()
         return obs
 

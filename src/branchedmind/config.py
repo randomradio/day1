@@ -8,8 +8,8 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     """BranchedMind configuration."""
 
-    # Database
-    database_url: str = "sqlite+aiosqlite:///branchedmind.db"
+    # Database (MatrixOne via aiomysql)
+    database_url: str = "mysql+aiomysql://root:111@127.0.0.1:6001/branchedmind"
 
     # Embedding
     embedding_provider: str = "openai"  # "openai" | "mock"

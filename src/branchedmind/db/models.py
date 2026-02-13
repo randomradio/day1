@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM models for BranchedMind."""
+"""SQLAlchemy ORM models for BranchedMind (MatrixOne backend)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ from datetime import datetime
 from sqlalchemy import (
     JSON,
     DateTime,
-    Enum,
     Float,
     Index,
     Integer,
@@ -34,13 +33,10 @@ class Fact(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     fact_text: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding_blob: Mapped[bytes | None] = mapped_column("embedding", nullable=True)
+    embedding: Mapped[str | None] = mapped_column(Text, nullable=True)
     category: Mapped[str | None] = mapped_column(String(50), nullable=True)
     confidence: Mapped[float] = mapped_column(Float, default=1.0)
-    status: Mapped[str] = mapped_column(
-        Enum("active", "superseded", "invalidated", name="fact_status"),
-        default="active",
-    )
+    status: Mapped[str] = mapped_column(String(20), default="active")
     source_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
     source_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     parent_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
@@ -110,7 +106,7 @@ class Observation(Base):
     observation_type: Mapped[str] = mapped_column(String(30), nullable=False)
     tool_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     summary: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding_blob: Mapped[bytes | None] = mapped_column("embedding", nullable=True)
+    embedding: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_input: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_output: Mapped[str | None] = mapped_column(Text, nullable=True)
     branch_name: Mapped[str] = mapped_column(String(100), default="main")
@@ -148,10 +144,7 @@ class Session(Base):
     project_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     task_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     agent_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    status: Mapped[str] = mapped_column(
-        Enum("active", "completed", "abandoned", name="session_status"),
-        default="active",
-    )
+    status: Mapped[str] = mapped_column(String(20), default="active")
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     metadata_json: Mapped[dict | None] = mapped_column(
         "metadata", JSON, nullable=True
@@ -170,10 +163,7 @@ class BranchRegistry(Base):
     branch_name: Mapped[str] = mapped_column(String(100), primary_key=True)
     parent_branch: Mapped[str] = mapped_column(String(100), default="main")
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    status: Mapped[str] = mapped_column(
-        Enum("active", "merged", "archived", name="branch_status"),
-        default="active",
-    )
+    status: Mapped[str] = mapped_column(String(20), default="active")
     forked_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now()
     )
@@ -229,10 +219,7 @@ class Task(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     branch_name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     parent_branch: Mapped[str] = mapped_column(String(100), default="main")
-    status: Mapped[str] = mapped_column(
-        Enum("active", "completed", "paused", "failed", name="task_status"),
-        default="active",
-    )
+    status: Mapped[str] = mapped_column(String(20), default="active")
     task_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     tags: Mapped[list | None] = mapped_column(JSON, nullable=True)
     objectives: Mapped[list | None] = mapped_column(JSON, nullable=True)
@@ -265,10 +252,7 @@ class TaskAgent(Base):
     agent_id: Mapped[str] = mapped_column(String(100), nullable=False)
     branch_name: Mapped[str] = mapped_column(String(100), nullable=False)
     role: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    status: Mapped[str] = mapped_column(
-        Enum("active", "completed", "failed", name="agent_status"),
-        default="active",
-    )
+    status: Mapped[str] = mapped_column(String(20), default="active")
     assigned_objectives: Mapped[list | None] = mapped_column(JSON, nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     joined_at: Mapped[datetime] = mapped_column(

@@ -1,4 +1,4 @@
-"""Search engine: hybrid BM25 + vector search with temporal scoring."""
+"""Search engine: hybrid BM25 + vector search with temporal scoring (MatrixOne)."""
 
 from __future__ import annotations
 
@@ -10,8 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from branchedmind.core.embedding import (
     EmbeddingProvider,
-    bytes_to_embedding,
-    cosine_similarity,
+    embedding_to_vecf32,
     get_embedding_provider,
 )
 from branchedmind.db.models import Fact, Observation
@@ -48,8 +47,6 @@ class SearchEngine:
             limit: Max results.
             time_range: Optional {"after": ISO, "before": ISO}.
             temporal_weight: Weight for recency scoring (0.0-1.0).
-                0.0 = no temporal weighting (default, backward compatible).
-                0.2 = moderate recency preference.
 
         Returns:
             List of scored results with fact data.
@@ -98,15 +95,13 @@ class SearchEngine:
         tags: list[str] | None = None,
         limit: int = 10,
     ) -> list[dict]:
-        """Search across branches using dimension columns instead of branch_name.
-
-        This enables cross-task discovery and agent replay searches.
+        """Search across branches using MATCH AGAINST.
 
         Args:
             query: Search query.
             task_id: Filter by task.
             agent_id: Filter by agent.
-            tags: Filter facts whose task has these tags (requires join).
+            tags: Filter facts whose task has these tags.
             limit: Max results.
 
         Returns:
@@ -115,11 +110,12 @@ class SearchEngine:
         if not query.strip():
             return []
 
-        # FTS5 keyword search (branch-agnostic)
+        # MO FULLTEXT search (branch-agnostic)
         fts_result = await self._session.execute(
             text(
-                "SELECT id, rank FROM facts_fts WHERE facts_fts MATCH :query "
-                "ORDER BY rank LIMIT :limit"
+                "SELECT id, MATCH(fact_text, category) AGAINST(:query IN NATURAL LANGUAGE MODE) AS score "
+                "FROM facts WHERE MATCH(fact_text, category) AGAINST(:query IN NATURAL LANGUAGE MODE) "
+                "ORDER BY score DESC LIMIT :limit"
             ),
             {"query": query, "limit": limit * 3},
         )
@@ -128,7 +124,7 @@ class SearchEngine:
             return []
 
         fts_ids = [row[0] for row in fts_rows]
-        fts_scores = {row[0]: -row[1] for row in fts_rows}
+        fts_scores = {row[0]: float(row[1]) for row in fts_rows}
 
         # Fetch facts with dimension filters
         stmt = select(Fact).where(
@@ -159,40 +155,49 @@ class SearchEngine:
         limit: int,
         time_range: dict | None,
     ) -> list[dict]:
-        """BM25 search using SQLite FTS5."""
+        """BM25 search using MatrixOne FULLTEXT INDEX + MATCH AGAINST."""
         if not query.strip():
             # Empty query: return recent facts
             return await self._recent_facts(branch_name, category, limit)
 
-        # FTS5 query
+        # MO MATCH AGAINST query
+        where_parts = [
+            "MATCH(fact_text, category) AGAINST(:query IN NATURAL LANGUAGE MODE)",
+            "branch_name = :branch",
+            "status = 'active'",
+        ]
+        params: dict = {"query": query, "branch": branch_name, "limit": limit}
+
+        if category:
+            where_parts.append("category = :category")
+            params["category"] = category
+        if time_range:
+            if time_range.get("after"):
+                where_parts.append("created_at >= :after")
+                params["after"] = time_range["after"]
+            if time_range.get("before"):
+                where_parts.append("created_at <= :before")
+                params["before"] = time_range["before"]
+
+        where_sql = " AND ".join(where_parts)
+
         fts_result = await self._session.execute(
             text(
-                "SELECT id, rank FROM facts_fts WHERE facts_fts MATCH :query "
-                "ORDER BY rank LIMIT :limit"
+                f"SELECT id, MATCH(fact_text, category) AGAINST(:query IN NATURAL LANGUAGE MODE) AS score "
+                f"FROM facts WHERE {where_sql} "
+                f"ORDER BY score DESC LIMIT :limit"
             ),
-            {"query": query, "limit": limit},
+            params,
         )
         fts_rows = fts_result.fetchall()
         if not fts_rows:
             return []
 
         fts_ids = [row[0] for row in fts_rows]
-        fts_scores = {row[0]: -row[1] for row in fts_rows}  # FTS5 rank is negative
+        fts_scores = {row[0]: float(row[1]) for row in fts_rows}
 
         # Fetch full facts
-        stmt = select(Fact).where(
-            Fact.id.in_(fts_ids),
-            Fact.branch_name == branch_name,
-            Fact.status == "active",
-        )
-        if category:
-            stmt = stmt.where(Fact.category == category)
-        if time_range:
-            if time_range.get("after"):
-                stmt = stmt.where(Fact.created_at >= time_range["after"])
-            if time_range.get("before"):
-                stmt = stmt.where(Fact.created_at <= time_range["before"])
-
+        stmt = select(Fact).where(Fact.id.in_(fts_ids))
         result = await self._session.execute(stmt)
         facts = result.scalars().all()
 
@@ -211,37 +216,55 @@ class SearchEngine:
         limit: int,
         time_range: dict | None,
     ) -> list[dict]:
-        """Vector similarity search."""
+        """Vector similarity search using MO SQL cosine_similarity()."""
         query_embedding = await self._embedder.embed(query)
+        vec_str = embedding_to_vecf32(query_embedding)
 
-        # Fetch all active facts on branch (for SQLite; MatrixOne would use HNSW)
-        stmt = select(Fact).where(
-            Fact.branch_name == branch_name,
-            Fact.status == "active",
-            Fact.embedding_blob.isnot(None),
-        )
+        where_parts = [
+            "branch_name = :branch",
+            "status = 'active'",
+            "embedding IS NOT NULL",
+        ]
+        params: dict = {"branch": branch_name, "limit": limit}
+
         if category:
-            stmt = stmt.where(Fact.category == category)
+            where_parts.append("category = :category")
+            params["category"] = category
         if time_range:
             if time_range.get("after"):
-                stmt = stmt.where(Fact.created_at >= time_range["after"])
+                where_parts.append("created_at >= :after")
+                params["after"] = time_range["after"]
             if time_range.get("before"):
-                stmt = stmt.where(Fact.created_at <= time_range["before"])
+                where_parts.append("created_at <= :before")
+                params["before"] = time_range["before"]
 
-        result = await self._session.execute(stmt)
-        facts = result.scalars().all()
+        where_sql = " AND ".join(where_parts)
 
-        # Compute cosine similarity
-        scored: list[tuple[Fact, float]] = []
-        for fact in facts:
-            if fact.embedding_blob:
-                fact_embedding = bytes_to_embedding(fact.embedding_blob)
-                sim = cosine_similarity(query_embedding, fact_embedding)
-                scored.append((fact, sim))
+        # MO cosine_similarity — vec_str inlined (not a bind param) since MO
+        # expects a vecf32 literal for the function argument
+        sql = (
+            f"SELECT id, cosine_similarity(embedding, '{vec_str}') AS score "
+            f"FROM facts WHERE {where_sql} "
+            f"ORDER BY score DESC LIMIT :limit"
+        )
+        result = await self._session.execute(text(sql), params)
+        rows = result.fetchall()
 
-        scored.sort(key=lambda x: x[1], reverse=True)
+        if not rows:
+            return []
+
+        fact_ids = [row[0] for row in rows]
+        scores = {row[0]: float(row[1]) for row in rows}
+
+        # Fetch full Fact objects
+        stmt = select(Fact).where(Fact.id.in_(fact_ids))
+        fact_result = await self._session.execute(stmt)
+        facts = {f.id: f for f in fact_result.scalars().all()}
+
         return [
-            self._fact_to_result(f, score) for f, score in scored[:limit]
+            self._fact_to_result(facts[fid], scores[fid])
+            for fid in fact_ids
+            if fid in facts
         ]
 
     async def _recent_facts(
@@ -267,32 +290,38 @@ class SearchEngine:
         session_id: str | None = None,
         limit: int = 10,
     ) -> list[dict]:
-        """Search observations via FTS5."""
+        """Search observations via MO MATCH AGAINST."""
         if not query.strip():
             return []
 
+        where_parts = [
+            "MATCH(summary, tool_name) AGAINST(:query IN NATURAL LANGUAGE MODE)",
+            "branch_name = :branch",
+        ]
+        params: dict = {"query": query, "branch": branch_name, "limit": limit}
+
+        if session_id:
+            where_parts.append("session_id = :session_id")
+            params["session_id"] = session_id
+
+        where_sql = " AND ".join(where_parts)
+
         fts_result = await self._session.execute(
             text(
-                "SELECT id, rank FROM observations_fts "
-                "WHERE observations_fts MATCH :query "
-                "ORDER BY rank LIMIT :limit"
+                f"SELECT id FROM observations WHERE {where_sql} "
+                f"LIMIT :limit"
             ),
-            {"query": query, "limit": limit},
+            params,
         )
         fts_rows = fts_result.fetchall()
         if not fts_rows:
             return []
 
         fts_ids = [row[0] for row in fts_rows]
-        stmt = select(Observation).where(
-            Observation.id.in_(fts_ids),
-            Observation.branch_name == branch_name,
-        )
-        if session_id:
-            stmt = stmt.where(Observation.session_id == session_id)
-
+        stmt = select(Observation).where(Observation.id.in_(fts_ids))
         result = await self._session.execute(stmt)
         observations = result.scalars().all()
+
         return [
             {
                 "id": o.id,

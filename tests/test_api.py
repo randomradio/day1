@@ -3,14 +3,21 @@
 from __future__ import annotations
 
 import os
+
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
 
-os.environ["BM_DATABASE_URL"] = "sqlite+aiosqlite://"
+_TEST_DB_URL = os.environ.get(
+    "BM_TEST_DATABASE_URL",
+    os.environ.get(
+        "BM_DATABASE_URL",
+        "mysql+aiomysql://root:111@127.0.0.1:6001/branchedmind",
+    ),
+)
+os.environ["BM_DATABASE_URL"] = _TEST_DB_URL
 os.environ["BM_EMBEDDING_PROVIDER"] = "mock"
 
 from branchedmind.api.app import app
@@ -22,26 +29,20 @@ from branchedmind.db.models import Base
 @pytest_asyncio.fixture
 async def client():
     """Create test client with fresh isolated database."""
-    engine = create_async_engine(
-        "sqlite+aiosqlite://",
-        poolclass=StaticPool,
-        connect_args={"check_same_thread": False},
-    )
+    engine = create_async_engine(_TEST_DB_URL, echo=False)
 
     async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
-        await conn.execute(
-            text(
-                "CREATE VIRTUAL TABLE IF NOT EXISTS facts_fts "
-                "USING fts5(id, fact_text, category)"
-            )
-        )
-        await conn.execute(
-            text(
-                "CREATE VIRTUAL TABLE IF NOT EXISTS observations_fts "
-                "USING fts5(id, summary, tool_name)"
-            )
-        )
+        # Create FULLTEXT indexes (MO replaces FTS5)
+        for stmt in [
+            "CREATE FULLTEXT INDEX IF NOT EXISTS ft_facts ON facts(fact_text, category)",
+            "CREATE FULLTEXT INDEX IF NOT EXISTS ft_obs ON observations(summary, tool_name)",
+        ]:
+            try:
+                await conn.execute(text(stmt))
+            except Exception:
+                pass
 
     session_factory = async_sessionmaker(
         engine, class_=AsyncSession, expire_on_commit=False
@@ -63,6 +64,8 @@ async def client():
         yield client
 
     app.dependency_overrides.clear()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
     await engine.dispose()
 
 
@@ -106,17 +109,17 @@ async def test_search_facts(client):
 @pytest.mark.asyncio
 async def test_branch_operations(client):
     resp = await client.post("/api/v1/branches", json={
-        "branch_name": "test-branch",
+        "branch_name": "test_branch",
         "description": "A test branch",
     })
     assert resp.status_code == 200
-    assert resp.json()["branch_name"] == "test-branch"
+    assert resp.json()["branch_name"] == "test_branch"
 
     resp = await client.get("/api/v1/branches")
     assert resp.status_code == 200
     names = [b["branch_name"] for b in resp.json()["branches"]]
     assert "main" in names
-    assert "test-branch" in names
+    assert "test_branch" in names
 
 
 @pytest.mark.asyncio

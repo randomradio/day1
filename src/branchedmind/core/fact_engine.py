@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select, text, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from branchedmind.core.embedding import (
     EmbeddingProvider,
-    embedding_to_bytes,
+    embedding_to_vecf32,
     get_embedding_provider,
 )
 from branchedmind.core.exceptions import FactNotFoundError
@@ -55,11 +55,11 @@ class FactEngine:
         Returns:
             The created Fact object.
         """
-        embedding = await self._embedder.embed(fact_text)
+        vec = await self._embedder.embed(fact_text)
 
         fact = Fact(
             fact_text=fact_text,
-            embedding_blob=embedding_to_bytes(embedding),
+            embedding=embedding_to_vecf32(vec),
             category=category,
             confidence=confidence,
             source_type=source_type,
@@ -70,15 +70,7 @@ class FactEngine:
             metadata_json=metadata,
         )
         self._session.add(fact)
-
-        # Update FTS index
-        await self._session.flush()
-        await self._session.execute(
-            text(
-                "INSERT INTO facts_fts(id, fact_text, category) VALUES (:id, :text, :cat)"
-            ),
-            {"id": fact.id, "text": fact_text, "cat": category or ""},
-        )
+        # MO FULLTEXT INDEX auto-indexes — no manual FTS insert needed
         await self._session.commit()
         return fact
 
@@ -120,20 +112,10 @@ class FactEngine:
         values: dict = {}
 
         if fact_text is not None and fact_text != fact.fact_text:
-            embedding = await self._embedder.embed(fact_text)
+            vec = await self._embedder.embed(fact_text)
             values["fact_text"] = fact_text
-            values["embedding_blob"] = embedding_to_bytes(embedding)
-            # Update FTS
-            await self._session.execute(
-                text("DELETE FROM facts_fts WHERE id = :id"),
-                {"id": fact_id},
-            )
-            await self._session.execute(
-                text(
-                    "INSERT INTO facts_fts(id, fact_text, category) VALUES (:id, :text, :cat)"
-                ),
-                {"id": fact_id, "text": fact_text, "cat": fact.category or ""},
-            )
+            values["embedding"] = embedding_to_vecf32(vec)
+            # MO FULLTEXT INDEX auto-updates — no manual FTS ops needed
 
         if confidence is not None:
             values["confidence"] = confidence

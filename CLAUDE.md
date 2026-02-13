@@ -14,11 +14,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 |-----------|------------|
 | Language | Python 3.11+ |
 | Framework | FastAPI (async, type-safe) |
-| Database | SQLAlchemy 2.0 (async) + pymysql |
-| Storage | MatrixOne (Docker) - MySQL-compatible, Vector + BM25 + Branch + PITR |
+| Database | SQLAlchemy 2.0 (async) + aiomysql |
+| Storage | MatrixOne (Cloud/Docker) — vecf32 + FULLTEXT INDEX + git4data (DATA BRANCH) + PITR |
 | MCP Server | `mcp` (official Python SDK) |
 | LLM | Claude API (Anthropic SDK) |
 | Embedding | OpenAI text-embedding-3-small |
+| Frontend | React + Vite + React Flow + D3.js + Zustand + Tailwind CSS |
 
 ## Core Data Model
 
@@ -31,7 +32,7 @@ branch_registry    - Branch registry
 merge_history      - Audit trail for merges
 ```
 
-All branches share same schema. `main_memory` = default, `branch_*` = created via CLONE.
+Main branch uses base tables (`facts`, `relations`, `observations`). Feature branches use suffixed tables (e.g. `facts_feature_x`, `relations_feature_x`) created via `DATA BRANCH CREATE TABLE`.
 
 ## Progressive Disclosure
 

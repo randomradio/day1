@@ -1,9 +1,8 @@
-"""Embedding providers for vector search."""
+"""Embedding providers for vector search (MatrixOne vecf32 format)."""
 
 from __future__ import annotations
 
 import hashlib
-import struct
 from abc import ABC, abstractmethod
 
 import numpy as np
@@ -88,15 +87,19 @@ def get_embedding_provider() -> EmbeddingProvider:
     return MockEmbedding()
 
 
-def embedding_to_bytes(vec: list[float]) -> bytes:
-    """Serialize float vector to bytes for storage."""
-    return struct.pack(f"{len(vec)}f", *vec)
+# --- MatrixOne vecf32 format conversion ---
 
 
-def bytes_to_embedding(data: bytes) -> list[float]:
-    """Deserialize bytes back to float vector."""
-    count = len(data) // 4
-    return list(struct.unpack(f"{count}f", data))
+def embedding_to_vecf32(vec: list[float]) -> str:
+    """Convert float vector to MatrixOne vecf32 string format: '[0.1,0.2,...]'."""
+    return "[" + ",".join(str(f) for f in vec) + "]"
+
+
+def vecf32_to_embedding(data: str | None) -> list[float] | None:
+    """Parse MatrixOne vecf32 string back to list[float]."""
+    if not data:
+        return None
+    return [float(x) for x in data.strip("[]").split(",")]
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:

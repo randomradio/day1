@@ -1,15 +1,15 @@
-"""Merge engine: diff, cherry-pick, squash, and auto-merge."""
+"""Merge engine: diff, cherry-pick, squash, auto-merge, and MO native merge."""
 
 from __future__ import annotations
 
-import json
 from datetime import datetime
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from branchedmind.core.embedding import bytes_to_embedding, cosine_similarity
-from branchedmind.core.exceptions import BranchNotFoundError, MergeConflictError
+from branchedmind.core.branch_manager import BranchManager
+from branchedmind.core.embedding import cosine_similarity, vecf32_to_embedding
+from branchedmind.core.exceptions import BranchNotFoundError
 from branchedmind.db.models import (
     BranchRegistry,
     Fact,
@@ -20,7 +20,7 @@ from branchedmind.db.models import (
 
 
 class BranchDiff:
-    """Result of comparing two branches."""
+    """Result of comparing two branches (application-layer diff)."""
 
     def __init__(
         self,
@@ -133,24 +133,48 @@ class MergeEngine:
         target_branch: str = "main",
         strategy: str = "auto",
         items: list[str] | None = None,
+        conflict: str = "skip",
     ) -> dict:
         """Execute a merge from source into target.
 
         Args:
             source_branch: Branch with new changes.
             target_branch: Branch to merge into.
-            strategy: "auto", "cherry_pick", or "squash".
+            strategy: "auto", "cherry_pick", "squash", or "native".
             items: For cherry_pick, specific item IDs to merge.
+            conflict: For native strategy — "skip" or "accept".
 
         Returns:
             Merge result with counts and merge_id.
         """
-        if strategy == "cherry_pick":
+        if strategy == "native":
+            return await self._native_merge(source_branch, target_branch, conflict)
+        elif strategy == "cherry_pick":
             return await self._cherry_pick(source_branch, target_branch, items or [])
         elif strategy == "squash":
             return await self._squash_merge(source_branch, target_branch)
         else:
             return await self._auto_merge(source_branch, target_branch)
+
+    async def _native_merge(
+        self, source: str, target: str, conflict: str = "skip"
+    ) -> dict:
+        """Use MO DATA BRANCH MERGE directly."""
+        mgr = BranchManager(self._session)
+        result = await mgr.merge_branch_native(source, target, conflict)
+
+        # Record merge history
+        merge_record = MergeHistory(
+            source_branch=source,
+            target_branch=target,
+            strategy=f"native_{conflict}",
+            merged_by="native",
+        )
+        self._session.add(merge_record)
+        await self._session.commit()
+
+        result["merge_id"] = merge_record.id
+        return result
 
     async def _cherry_pick(
         self, source: str, target: str, item_ids: list[str]
@@ -167,7 +191,7 @@ class MergeEngine:
             if fact:
                 new_fact = Fact(
                     fact_text=fact.fact_text,
-                    embedding_blob=fact.embedding_blob,
+                    embedding=fact.embedding,
                     category=fact.category,
                     confidence=fact.confidence,
                     source_type="merge",
@@ -193,7 +217,7 @@ class MergeEngine:
                     observation_type=obs.observation_type,
                     tool_name=obs.tool_name,
                     summary=obs.summary,
-                    embedding_blob=obs.embedding_blob,
+                    embedding=obs.embedding,
                     raw_input=obs.raw_input,
                     raw_output=obs.raw_output,
                     branch_name=target,
@@ -234,7 +258,7 @@ class MergeEngine:
             if fact.id not in conflict_fact_ids:
                 new_fact = Fact(
                     fact_text=fact.fact_text,
-                    embedding_blob=fact.embedding_blob,
+                    embedding=fact.embedding,
                     category=fact.category,
                     confidence=fact.confidence,
                     source_type="merge",
@@ -271,7 +295,7 @@ class MergeEngine:
                 observation_type=obs.observation_type,
                 tool_name=obs.tool_name,
                 summary=obs.summary,
-                embedding_blob=obs.embedding_blob,
+                embedding=obs.embedding,
                 branch_name=target,
                 metadata_json=obs.metadata_json,
             )
@@ -314,7 +338,7 @@ class MergeEngine:
         for fact in diff.new_facts:
             new_fact = Fact(
                 fact_text=fact.fact_text,
-                embedding_blob=fact.embedding_blob,
+                embedding=fact.embedding,
                 category=fact.category,
                 confidence=fact.confidence,
                 source_type="merge",
@@ -402,20 +426,24 @@ class MergeEngine:
         fact: Fact, candidates: list[Fact]
     ) -> dict | None:
         """Find the most similar fact in candidates using embedding similarity."""
-        if not fact.embedding_blob or not candidates:
+        if not fact.embedding or not candidates:
             return None
 
-        fact_emb = bytes_to_embedding(fact.embedding_blob)
+        fact_emb = vecf32_to_embedding(fact.embedding)
+        if fact_emb is None:
+            return None
+
         best_sim = 0.0
         best_fact = None
 
         for c in candidates:
-            if c.embedding_blob:
-                c_emb = bytes_to_embedding(c.embedding_blob)
-                sim = cosine_similarity(fact_emb, c_emb)
-                if sim > best_sim:
-                    best_sim = sim
-                    best_fact = c
+            if c.embedding:
+                c_emb = vecf32_to_embedding(c.embedding)
+                if c_emb is not None:
+                    sim = cosine_similarity(fact_emb, c_emb)
+                    if sim > best_sim:
+                        best_sim = sim
+                        best_fact = c
 
         if best_fact is None:
             return None

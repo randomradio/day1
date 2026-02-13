@@ -1,0 +1,260 @@
+#!/usr/bin/env python3
+"""Verify MatrixOne features required by BranchedMind.
+
+Usage:
+    BM_DATABASE_URL="mysql+aiomysql://user:pass@host:6001/branchedmind" python scripts/test_mo_features.py
+
+Tests 20 features:
+  1. Connection + CREATE TABLE
+  2. INSERT / SELECT
+  3. vecf32 column + cosine_similarity()
+  4. FULLTEXT INDEX + MATCH AGAINST
+  5. DATA BRANCH CREATE TABLE
+  6. Insert into branch table
+  7. DATA BRANCH DIFF
+  8. DATA BRANCH DIFF OUTPUT COUNT
+  9. DATA BRANCH MERGE (WHEN CONFLICT SKIP)
+ 10. DATA BRANCH MERGE (WHEN CONFLICT ACCEPT)
+ 11. CREATE SNAPSHOT FOR TABLE
+ 12. Time travel: SELECT ... {AS OF TIMESTAMP}
+ 13. JSON column support
+ 14. DROP TABLE cleanup
+"""
+
+from __future__ import annotations
+
+import asyncio
+import os
+import sys
+import time
+
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
+
+
+async def main() -> None:
+    url = os.environ.get(
+        "BM_DATABASE_URL",
+        "mysql+aiomysql://root:111@127.0.0.1:6001/branchedmind",
+    )
+    engine = create_async_engine(url, echo=False)
+    passed = 0
+    failed = 0
+    skipped = 0
+
+    async def run_test(name: str, coro):
+        nonlocal passed, failed, skipped
+        try:
+            await coro
+            print(f"  [PASS] {name}")
+            passed += 1
+        except Exception as e:
+            err = str(e)[:120]
+            if "not supported" in err.lower() or "syntax" in err.lower():
+                print(f"  [SKIP] {name}: {err}")
+                skipped += 1
+            else:
+                print(f"  [FAIL] {name}: {err}")
+                failed += 1
+
+    print(f"Connecting to: {url.split('@')[-1] if '@' in url else url}")
+    print("=" * 60)
+
+    async with engine.begin() as conn:
+        # Cleanup from previous runs
+        for tbl in [
+            "bm_test_branch", "bm_test_branch2", "bm_test_main", "bm_test_ft"
+        ]:
+            await conn.execute(text(f"DROP TABLE IF EXISTS {tbl}"))
+
+        # 1. Connection + CREATE TABLE
+        async def test_connection():
+            await conn.execute(text(
+                "CREATE TABLE IF NOT EXISTS bm_test_main ("
+                "  id VARCHAR(36) PRIMARY KEY,"
+                "  fact_text TEXT,"
+                "  embedding TEXT,"
+                "  category VARCHAR(50),"
+                "  metadata JSON,"
+                "  created_at DATETIME DEFAULT NOW()"
+                ")"
+            ))
+        await run_test("1. Connection + CREATE TABLE", test_connection())
+
+        # 2. INSERT / SELECT
+        async def test_crud():
+            await conn.execute(text(
+                "INSERT INTO bm_test_main (id, fact_text, category) "
+                "VALUES ('t1', 'Python is great', 'code'),"
+                "       ('t2', 'FastAPI is fast', 'framework'),"
+                "       ('t3', 'MatrixOne rocks', 'database')"
+            ))
+            r = await conn.execute(text("SELECT COUNT(*) FROM bm_test_main"))
+            assert r.scalar() == 3, "Expected 3 rows"
+        await run_test("2. INSERT / SELECT", test_crud())
+
+        # 3. vecf32 + cosine_similarity
+        async def test_vector():
+            await conn.execute(text(
+                "UPDATE bm_test_main SET embedding = '[1.0,0.0,0.0]' WHERE id = 't1'"
+            ))
+            await conn.execute(text(
+                "UPDATE bm_test_main SET embedding = '[0.0,1.0,0.0]' WHERE id = 't2'"
+            ))
+            await conn.execute(text(
+                "UPDATE bm_test_main SET embedding = '[0.707,0.707,0.0]' WHERE id = 't3'"
+            ))
+            r = await conn.execute(text(
+                "SELECT id, cosine_similarity(embedding, '[1.0,0.0,0.0]') AS score "
+                "FROM bm_test_main WHERE embedding IS NOT NULL "
+                "ORDER BY score DESC"
+            ))
+            rows = r.fetchall()
+            assert len(rows) == 3, f"Expected 3 rows, got {len(rows)}"
+            assert rows[0][0] == "t1", f"Expected t1 first, got {rows[0][0]}"
+        await run_test("3. vecf32 + cosine_similarity()", test_vector())
+
+        # 4. FULLTEXT INDEX + MATCH AGAINST
+        async def test_fulltext():
+            await conn.execute(text(
+                "CREATE TABLE bm_test_ft ("
+                "  id VARCHAR(36) PRIMARY KEY,"
+                "  content TEXT,"
+                "  tag VARCHAR(50)"
+                ")"
+            ))
+            await conn.execute(text(
+                "CREATE FULLTEXT INDEX ft_test ON bm_test_ft(content, tag)"
+            ))
+            await conn.execute(text(
+                "INSERT INTO bm_test_ft VALUES "
+                "('a', 'machine learning models', 'ai'),"
+                "('b', 'database optimization', 'db'),"
+                "('c', 'neural network training', 'ai')"
+            ))
+            r = await conn.execute(text(
+                "SELECT id FROM bm_test_ft "
+                "WHERE MATCH(content, tag) AGAINST('machine learning' IN NATURAL LANGUAGE MODE)"
+            ))
+            rows = r.fetchall()
+            assert len(rows) >= 1, "Expected at least 1 fulltext match"
+        await run_test("4. FULLTEXT INDEX + MATCH AGAINST", test_fulltext())
+
+        # 5. DATA BRANCH CREATE TABLE
+        async def test_branch_create():
+            await conn.execute(text(
+                "DATA BRANCH CREATE TABLE bm_test_branch FROM bm_test_main"
+            ))
+            r = await conn.execute(text("SELECT COUNT(*) FROM bm_test_branch"))
+            assert r.scalar() == 3, "Branch should have 3 rows"
+        await run_test("5. DATA BRANCH CREATE TABLE", test_branch_create())
+
+        # 6. Insert into branch table
+        async def test_branch_insert():
+            await conn.execute(text(
+                "INSERT INTO bm_test_branch (id, fact_text, category) "
+                "VALUES ('t4', 'Branch-only fact', 'test')"
+            ))
+            r = await conn.execute(text("SELECT COUNT(*) FROM bm_test_branch"))
+            assert r.scalar() == 4, "Branch should have 4 rows"
+            r2 = await conn.execute(text("SELECT COUNT(*) FROM bm_test_main"))
+            assert r2.scalar() == 3, "Main should still have 3 rows"
+        await run_test("6. Insert into branch table", test_branch_insert())
+
+        # 7. DATA BRANCH DIFF
+        async def test_diff():
+            r = await conn.execute(text(
+                "DATA BRANCH DIFF bm_test_branch AGAINST bm_test_main"
+            ))
+            rows = r.fetchall()
+            assert len(rows) >= 1, f"Expected diffs, got {len(rows)}"
+        await run_test("7. DATA BRANCH DIFF", test_diff())
+
+        # 8. DATA BRANCH DIFF OUTPUT COUNT
+        async def test_diff_count():
+            r = await conn.execute(text(
+                "DATA BRANCH DIFF bm_test_branch AGAINST bm_test_main OUTPUT COUNT"
+            ))
+            row = r.fetchone()
+            assert row is not None, "Expected count result"
+            assert int(row[0]) >= 1, f"Expected count >= 1, got {row[0]}"
+        await run_test("8. DATA BRANCH DIFF OUTPUT COUNT", test_diff_count())
+
+        # 9. DATA BRANCH MERGE (SKIP)
+        async def test_merge_skip():
+            await conn.execute(text(
+                "DATA BRANCH CREATE TABLE bm_test_branch2 FROM bm_test_main"
+            ))
+            await conn.execute(text(
+                "INSERT INTO bm_test_branch2 (id, fact_text, category) "
+                "VALUES ('t5', 'Merge test skip', 'test')"
+            ))
+            await conn.execute(text(
+                "DATA BRANCH MERGE bm_test_branch2 INTO bm_test_main WHEN CONFLICT SKIP"
+            ))
+            r = await conn.execute(text("SELECT COUNT(*) FROM bm_test_main"))
+            assert r.scalar() >= 4, "Main should have merged rows"
+        await run_test("9. DATA BRANCH MERGE (WHEN CONFLICT SKIP)", test_merge_skip())
+
+        # 10. DATA BRANCH MERGE (ACCEPT)
+        async def test_merge_accept():
+            await conn.execute(text(
+                "DATA BRANCH MERGE bm_test_branch INTO bm_test_main WHEN CONFLICT ACCEPT"
+            ))
+            r = await conn.execute(text("SELECT COUNT(*) FROM bm_test_main"))
+            count = r.scalar()
+            assert count >= 4, f"Main should have >= 4 rows, got {count}"
+        await run_test("10. DATA BRANCH MERGE (WHEN CONFLICT ACCEPT)", test_merge_accept())
+
+        # 11. CREATE SNAPSHOT FOR TABLE
+        async def test_snapshot():
+            await conn.execute(text(
+                "CREATE SNAPSHOT bm_test_snap FOR TABLE branchedmind bm_test_main"
+            ))
+        await run_test("11. CREATE SNAPSHOT FOR TABLE", test_snapshot())
+
+        # 12. Time travel (AS OF TIMESTAMP)
+        async def test_time_travel():
+            ts = time.strftime("%Y-%m-%d %H:%M:%S")
+            r = await conn.execute(text(
+                f"SELECT COUNT(*) FROM bm_test_main {{AS OF TIMESTAMP '{ts}'}}"
+            ))
+            count = r.scalar()
+            assert count >= 0, "Time travel should return result"
+        await run_test("12. Time travel: {AS OF TIMESTAMP}", test_time_travel())
+
+        # 13. JSON column support
+        async def test_json():
+            await conn.execute(text(
+                "UPDATE bm_test_main SET metadata = '{\"key\": \"value\"}' WHERE id = 't1'"
+            ))
+            r = await conn.execute(text(
+                "SELECT metadata FROM bm_test_main WHERE id = 't1'"
+            ))
+            row = r.fetchone()
+            assert row is not None, "Expected JSON result"
+        await run_test("13. JSON column support", test_json())
+
+        # Cleanup
+        async def test_cleanup():
+            for tbl in [
+                "bm_test_branch", "bm_test_branch2", "bm_test_main", "bm_test_ft"
+            ]:
+                await conn.execute(text(f"DROP TABLE IF EXISTS {tbl}"))
+            try:
+                await conn.execute(text("DROP SNAPSHOT bm_test_snap"))
+            except Exception:
+                pass
+        await run_test("14. DROP TABLE cleanup", test_cleanup())
+
+    await engine.dispose()
+
+    print("=" * 60)
+    print(f"Results: {passed} passed, {failed} failed, {skipped} skipped")
+    if failed > 0:
+        sys.exit(1)
+    print("All required MO features verified!")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

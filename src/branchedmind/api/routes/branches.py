@@ -1,4 +1,4 @@
-"""REST API routes for branch operations."""
+"""REST API routes for branch operations (MatrixOne native)."""
 
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ class MergeRequest(BaseModel):
     strategy: str = "auto"
     target_branch: str = "main"
     items: list[str] | None = None
+    conflict: str = "skip"
 
 
 @router.post("/branches")
@@ -80,6 +81,7 @@ async def branch_diff(
     category: str | None = None,
     session: AsyncSession = Depends(get_session),
 ):
+    """Application-layer diff (fact text similarity)."""
     engine = MergeEngine(session)
     try:
         diff = await engine.diff(
@@ -92,12 +94,50 @@ async def branch_diff(
     return diff.to_dict()
 
 
+@router.get("/branches/{branch_name}/diff/native")
+async def branch_diff_native(
+    branch_name: str,
+    target_branch: str = "main",
+    session: AsyncSession = Depends(get_session),
+):
+    """MO DATA BRANCH DIFF — row-level INSERT/UPDATE/DELETE diff."""
+    mgr = BranchManager(session)
+    try:
+        diffs = await mgr.diff_branch(branch_name, target_branch)
+    except BranchNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"diffs": diffs, "count": len(diffs)}
+
+
+@router.get("/branches/{branch_name}/diff/native/count")
+async def branch_diff_native_count(
+    branch_name: str,
+    target_branch: str = "main",
+    session: AsyncSession = Depends(get_session),
+):
+    """MO DATA BRANCH DIFF OUTPUT COUNT — per-table change counts."""
+    mgr = BranchManager(session)
+    try:
+        counts = await mgr.diff_branch_count(branch_name, target_branch)
+    except BranchNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"counts": counts}
+
+
 @router.post("/branches/{branch_name}/merge")
 async def merge_branch(
     branch_name: str,
     body: MergeRequest,
     session: AsyncSession = Depends(get_session),
 ):
+    """Merge a branch using the specified strategy.
+
+    Strategies:
+        auto — application-layer merge, skip conflicts
+        cherry_pick — merge specific items by ID
+        squash — merge all items
+        native — MO DATA BRANCH MERGE with conflict=skip|accept
+    """
     engine = MergeEngine(session)
     try:
         result = await engine.merge(
@@ -105,7 +145,24 @@ async def merge_branch(
             target_branch=body.target_branch,
             strategy=body.strategy,
             items=body.items,
+            conflict=body.conflict,
         )
     except BranchNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return result
+
+
+@router.delete("/branches/{branch_name}")
+async def archive_branch(
+    branch_name: str,
+    session: AsyncSession = Depends(get_session),
+):
+    """Archive a branch (drop branch tables, mark as archived)."""
+    mgr = BranchManager(session)
+    try:
+        await mgr.archive_branch(branch_name)
+    except BranchNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except BranchExistsError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"status": "archived", "branch_name": branch_name}

@@ -724,30 +724,41 @@ BranchedMind 完全不知道（也不关心）有多少 Agent 在运行。
 
 ## 5. 分支与合并引擎（核心差异化）
 
-### 5.1 MatrixOne 分支操作
+### 5.1 MatrixOne 分支操作（Git4Data — 表级分支）
 
 ```sql
--- 创建分支（毫秒级零拷贝 CLONE）
-CREATE DATABASE branch_agent_A FROM main_memory;
+-- 创建分支（零拷贝，CoW 语义，表级别）
+DATA BRANCH CREATE TABLE facts_agent_A FROM facts;
+DATA BRANCH CREATE TABLE relations_agent_A FROM relations;
+DATA BRANCH CREATE TABLE observations_agent_A FROM observations;
 
--- 分支完全独立，Agent 连接到自己的分支数据库
--- 所有读写操作隔离
+-- 分支表完全隔离，Agent 读写自己的分支表
+-- 命名规则: {table}_{branch_name}，main 分支用原始表名
+
+-- 行级差异比较（基于 PK）
+DATA BRANCH DIFF facts_agent_A AGAINST facts;
+DATA BRANCH DIFF facts_agent_A AGAINST facts OUTPUT COUNT;
+
+-- 原生合并（两种冲突策略）
+DATA BRANCH MERGE facts_agent_A INTO facts;                    -- 默认
+DATA BRANCH MERGE facts_agent_A INTO facts WHEN CONFLICT SKIP;   -- 保留 target
+DATA BRANCH MERGE facts_agent_A INTO facts WHEN CONFLICT ACCEPT; -- 用 source 覆盖
 
 -- 快照（零拷贝）
-CREATE SNAPSHOT sp_before_refactor FOR ACCOUNT your_account;
+CREATE SNAPSHOT sp_before_refactor FOR DATABASE branchedmind;
 
--- PITR 查询（在特定时间点查询数据）
--- 通过 MatrixOne 的 PITR 能力实现
+-- PITR 时间旅行查询
+SELECT * FROM facts {AS OF TIMESTAMP '2025-01-15 10:00:00'} ORDER BY created_at DESC;
 ```
 
-### 5.2 Application-layer Merge Engine
+### 5.2 Dual-Strategy Merge Engine
 
 ```python
 class MergeEngine:
     """
-    应用层合并引擎
-    因为 MatrixOne 没有原生 cherry-pick，
-    我们在应用层实现精细化合并。
+    双策略合并引擎:
+    - native: 使用 MO DATA BRANCH MERGE (SKIP/ACCEPT 冲突策略)
+    - auto/cherry_pick/squash: 应用层精细化合并 (LLM 辅助冲突解决)
     """
     
     async def diff(self, source_branch: str, target_branch: str) -> BranchDiff:
@@ -836,9 +847,10 @@ class MergeEngine:
 ### 6.1 技术栈
 
 ```
-Database:     MatrixOne (Docker) —— 内置 Vector + BM25 + Branch + PITR
-Backend:      TypeScript (Node.js) —— 与 Claude Code 生态一致
-MCP Server:   @modelcontextprotocol/sdk
+Database:     MatrixOne (Cloud/Docker) — vecf32 + FULLTEXT INDEX + DATA BRANCH + PITR
+Backend:      Python 3.11+ (FastAPI + SQLAlchemy 2.0 async + aiomysql)
+Frontend:     React + Vite + React Flow + D3.js + Zustand + Tailwind CSS
+MCP Server:   mcp (official Python SDK)
 Plugin:       Claude Code Plugin format (.claude-plugin/)
 LLM:          Claude API (事实提取, 冲突解决, 观察压缩)
 Embedding:    OpenAI text-embedding-3-small 或本地模型
@@ -928,7 +940,7 @@ Phase 3: 分支差异化 (Day 3, ~24h)
 | **集成方式** | 自定义 Python SDK | MCP Server + Claude Code Plugin + REST |
 | **自动化** | 手动调 API | Hooks 自动捕获，零配置 |
 | **兼容性** | 仅支持自研 Agent Loop | Claude Code, Agent SDK, Cursor, 任意 MCP 客户端 |
-| **Backend** | Python FastAPI | TypeScript（与 Claude Code 生态一致）|
+| **Backend** | Python FastAPI | Python 3.11+ (FastAPI + SQLAlchemy 2.0 async) |
 | **数据库** | 同 | MatrixOne（不变，核心优势）|
 | **分发** | 需要部署整个平台 | `npm install` 或 Plugin marketplace |
 
@@ -943,4 +955,4 @@ Phase 3: 分支差异化 (Day 3, ~24h)
 5. **记忆质量评分** —— 自动评估 fact 的可靠性
 6. **多模型支持** —— 不仅 Claude，也支持 GPT, Gemini 等
 7. **记忆压缩策略** —— 长期记忆自动精炼和淘汰
-8. **MO Native Cherry-pick** —— 等 MatrixOne 原生支持后迁移
+8. **Dashboard 可视化增强** —— 更丰富的 MO PITR 时间旅行集成、知识图谱可视化

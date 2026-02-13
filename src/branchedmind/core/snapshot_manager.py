@@ -1,13 +1,14 @@
-"""Snapshot manager: point-in-time snapshots and time-travel queries."""
+"""Snapshot manager: point-in-time snapshots and time-travel queries (MatrixOne)."""
 
 from __future__ import annotations
 
-import json
+import re
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from branchedmind.core.branch_manager import _branch_table
 from branchedmind.core.exceptions import SnapshotError
 from branchedmind.db.models import Fact, Observation, Relation, Snapshot
 
@@ -79,6 +80,42 @@ class SnapshotManager:
         await self._session.commit()
         return snapshot
 
+    async def create_snapshot_native(
+        self,
+        branch_name: str = "main",
+        label: str | None = None,
+    ) -> dict:
+        """Create a MO native snapshot using CREATE SNAPSHOT FOR DATABASE.
+
+        Args:
+            branch_name: Branch name (used for labeling).
+            label: Optional label.
+
+        Returns:
+            Dict with snapshot name and metadata.
+        """
+        safe_label = re.sub(r"[^a-zA-Z0-9_]", "_", label or branch_name)
+        snap_name = f"sp_{safe_label}_{int(datetime.utcnow().timestamp())}"
+
+        await self._session.execute(
+            text(f"CREATE SNAPSHOT {snap_name} FOR DATABASE branchedmind")
+        )
+
+        # Also save to snapshots table for tracking
+        snapshot = Snapshot(
+            label=label or snap_name,
+            branch_name=branch_name,
+            snapshot_data={"mo_snapshot_name": snap_name, "type": "native"},
+        )
+        self._session.add(snapshot)
+        await self._session.commit()
+
+        return {
+            "snapshot_name": snap_name,
+            "id": snapshot.id,
+            "branch_name": branch_name,
+        }
+
     async def list_snapshots(
         self, branch_name: str | None = None
     ) -> list[Snapshot]:
@@ -106,7 +143,9 @@ class SnapshotManager:
         category: str | None = None,
         limit: int = 20,
     ) -> list[dict]:
-        """Query facts as they existed at a specific timestamp.
+        """Query facts as they existed at a specific timestamp using MO time travel.
+
+        Uses MatrixOne's {AS OF TIMESTAMP 'ts'} syntax for true point-in-time queries.
 
         Args:
             timestamp: ISO format timestamp.
@@ -115,32 +154,39 @@ class SnapshotManager:
             limit: Max results.
 
         Returns:
-            Facts that were active at the given timestamp.
+            Facts that existed at the given timestamp.
         """
-        stmt = (
-            select(Fact)
-            .where(
-                Fact.branch_name == branch_name,
-                Fact.created_at <= timestamp,
-            )
-            .order_by(Fact.created_at.desc())
-            .limit(limit)
-        )
-        if category:
-            stmt = stmt.where(Fact.category == category)
+        # Validate timestamp format to prevent injection
+        if not re.match(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}", timestamp):
+            raise SnapshotError(f"Invalid timestamp format: {timestamp}")
+        ts = timestamp[:19].replace("T", " ")
 
-        # Exclude facts that were superseded before the timestamp
-        result = await self._session.execute(stmt)
-        facts = result.scalars().all()
+        table = _branch_table("facts", branch_name)
+
+        where_parts: list[str] = []
+        params: dict = {"limit": limit}
+        if category:
+            where_parts.append("category = :category")
+            params["category"] = category
+
+        where_sql = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
+
+        # MO native time travel: SELECT ... FROM table {AS OF TIMESTAMP 'ts'}
+        result = await self._session.execute(
+            text(
+                f"SELECT id, fact_text, category, confidence, status, created_at "
+                f"FROM {table} {{AS OF TIMESTAMP '{ts}'}} {where_sql} "
+                f"ORDER BY created_at DESC LIMIT :limit"
+            ),
+            params,
+        )
+        rows = result.fetchall()
+        columns = ["id", "fact_text", "category", "confidence", "status", "created_at"]
 
         return [
             {
-                "id": f.id,
-                "fact_text": f.fact_text,
-                "category": f.category,
-                "confidence": f.confidence,
-                "status": f.status,
-                "created_at": f.created_at.isoformat() if f.created_at else None,
+                col: (val.isoformat() if isinstance(val, datetime) else val)
+                for col, val in zip(columns, row)
             }
-            for f in facts
+            for row in rows
         ]

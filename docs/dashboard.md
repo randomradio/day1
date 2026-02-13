@@ -174,87 +174,80 @@ const Timeline: React.FC = () => {
 
 ### 3. MergePanel.tsx
 
-UI for reviewing and resolving branch merge conflicts.
+UI for reviewing MO native diff results and executing merges.
+
+**MO Native Diff**: Uses `DATA BRANCH DIFF source AGAINST target` to get row-level changes (INSERT/UPDATE/DELETE). The API endpoint is `GET /api/v1/branches/{name}/diff/native`.
+
+**Merge Strategies**:
+- **native**: Uses MO `DATA BRANCH MERGE` with conflict handling (SKIP = keep target, ACCEPT = use source)
+- **auto**: Application-layer LLM-assisted merge with conflict resolution
+- **cherry_pick**: Select specific items to merge
+- **squash**: Merge all as a single summarized fact
 
 ```tsx
-interface Conflict {
-  factId: string;
-  sourceFact: string;      // Source branch fact
-  targetFact: string;      // Target branch fact
-  similarity: number;        // 0-1, how similar they are
+interface DiffRow {
+  table: string;           // "facts" | "relations" | "observations"
+  flag: string;            // "INSERT" | "UPDATE" | "DELETE" (from MO diff)
+  [column: string]: any;   // Row data columns
 }
 
 const MergePanel: React.FC = () => {
-  const { sourceBranch, targetBranch } = useBranchStore();
-  const [conflicts, setConflicts] = useState<Conflict[]>([]);
-  const [resolutions, setResolutions] = useState<Record<string, 'source' | 'target' | 'both'>>({});
+  const { activeBranch, diffs, fetchDiff, mergeBranch } = useBranchStore();
+  const [strategy, setStrategy] = useState('native');
+  const [conflict, setConflict] = useState('skip');  // skip | accept
+  const [targetBranch, setTargetBranch] = useState('main');
 
-  // Fetch diff when branches selected
+  // Fetch MO native diff
   useEffect(() => {
-    if (sourceBranch && targetBranch) {
-      api.diffBranches(sourceBranch, targetBranch)
-        .then(setConflicts);
+    if (activeBranch !== 'main') {
+      fetchDiff(activeBranch, targetBranch);
     }
-  }, [sourceBranch, targetBranch]);
-
-  const handleResolve = (factId: string, choice: 'source' | 'target' | 'both') => {
-    setResolutions({ ...resolutions, [factId]: choice });
-  };
+  }, [activeBranch, targetBranch]);
 
   const executeMerge = () => {
-    const toKeep = Object.entries(resolutions)
-      .filter(([_, choice]) => choice !== 'target')
-      .map(([id]) => id);
-
-    api.mergeBranches(sourceBranch, targetBranch, 'cherry_pick', toKeep);
+    mergeBranch(activeBranch, targetBranch, strategy, conflict);
   };
 
   return (
-    <div className="p-6">
-      <h2 className="text-xl font-bold">Merge: {sourceBranch} → {targetBranch}</h2>
+    <div className="bg-gray-800 rounded-lg p-4">
+      <h3>Merge: {activeBranch} → {targetBranch}</h3>
 
-      {conflicts.map(c => (
-        <div key={c.factId} className="border rounded p-4 mb-4">
-          <div className="flex justify-between">
-            <div>
-              <span className="text-red-600">Source:</span>
-              <p>{c.sourceFact}</p>
-            </div>
-            <div>
-              <span className="text-blue-600">Target:</span>
-              <p>{c.targetFact}</p>
-            </div>
-          </div>
+      {/* Diff table: table | flag | columns */}
+      <table>
+        <thead>
+          <tr><th>Table</th><th>Flag</th><th>ID</th><th>Details</th></tr>
+        </thead>
+        <tbody>
+          {diffs.map((d, i) => (
+            <tr key={i}>
+              <td>{d.table}</td>
+              <td className={d.flag === 'INSERT' ? 'text-green' : d.flag === 'DELETE' ? 'text-red' : 'text-yellow'}>
+                {d.flag}
+              </td>
+              <td>{d.id}</td>
+              <td>{d.fact_text || d.summary || ''}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
 
-          <div className="flex gap-2 mt-2">
-            <button
-              onClick={() => handleResolve(c.factId, 'source')}
-              className={resolutions[c.factId] === 'source' ? 'bg-green-500' : 'bg-gray-200'}
-            >
-              Keep Source
-            </button>
-            <button
-              onClick={() => handleResolve(c.factId, 'target')}
-              className={resolutions[c.factId] === 'target' ? 'bg-green-500' : 'bg-gray-200'}
-            >
-              Keep Target
-            </button>
-            <button
-              onClick={() => handleResolve(c.factId, 'both')}
-              className={resolutions[c.factId] === 'both' ? 'bg-green-500' : 'bg-gray-200'}
-            >
-              Keep Both
-            </button>
-          </div>
-        </div>
-      ))}
+      {/* Strategy selector */}
+      <select value={strategy} onChange={e => setStrategy(e.target.value)}>
+        <option value="native">Native (MO DATA BRANCH MERGE)</option>
+        <option value="auto">Auto (LLM-assisted)</option>
+        <option value="cherry_pick">Cherry Pick</option>
+        <option value="squash">Squash</option>
+      </select>
 
-      <button
-        onClick={executeMerge}
-        className="w-full bg-blue-500 text-white py-2 rounded mt-4"
-      >
-        Execute Merge ({Object.values(resolutions).filter(r => r !== 'target').length} changes)
-      </button>
+      {/* Conflict strategy (native only) */}
+      {strategy === 'native' && (
+        <select value={conflict} onChange={e => setConflict(e.target.value)}>
+          <option value="skip">Skip Conflicts (keep target)</option>
+          <option value="accept">Accept All (use source)</option>
+        </select>
+      )}
+
+      <button onClick={executeMerge}>Execute Merge</button>
     </div>
   );
 };
@@ -264,29 +257,49 @@ const MergePanel: React.FC = () => {
 
 ### REST Client (src/api/client.ts)
 
+Uses relative paths (`/api/v1/...`) proxied via Vite dev server to `http://localhost:8000`.
+
 ```typescript
-const API_BASE = 'http://localhost:8000/api/v1';
+const API = '/api/v1';
 
 export const api = {
   // Branches
   listBranches: () =>
-    fetch(`${API_BASE}/branches`).then(r => r.json()),
+    fetch(`${API}/branches`).then(r => r.json()),
 
-  diffBranches: (source: string, target: string) =>
-    fetch(`${API_BASE}/branches/${source}/diff/${target}`).then(r => r.json()),
-
-  // Facts
-  searchFacts: (query: string, branch?: string) =>
-    fetch(`${API_BASE}/facts/search?q=${encodeURIComponent(query)}&branch=${branch || 'main'}`)
-      .then(r => r.json()),
-
-  // Merge
-  mergeBranches: (source: string, target: string, strategy: string, items: string[]) =>
-    fetch(`${API_BASE}/branches/${source}/merge`, {
+  createBranch: (name: string, parent = 'main', description?: string) =>
+    fetch(`${API}/branches`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ target_branch: target, strategy, items })
+      body: JSON.stringify({ branch_name: name, parent_branch: parent, description }),
     }).then(r => r.json()),
+
+  // MO Native Diff (DATA BRANCH DIFF)
+  diffNative: (source: string, target = 'main') =>
+    fetch(`${API}/branches/${source}/diff/native?target_branch=${target}`).then(r => r.json()),
+
+  diffNativeCount: (source: string, target = 'main') =>
+    fetch(`${API}/branches/${source}/diff/native/count?target_branch=${target}`).then(r => r.json()),
+
+  // Merge (supports native/auto/cherry_pick/squash strategies)
+  mergeBranch: (source: string, target: string, strategy: string, conflict?: string) =>
+    fetch(`${API}/branches/${source}/merge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_branch: target, strategy, conflict }),
+    }).then(r => r.json()),
+
+  // Facts
+  searchFacts: (query: string, branch = 'main') =>
+    fetch(`${API}/facts/search?query=${encodeURIComponent(query)}&branch=${branch}`).then(r => r.json()),
+
+  // Time Travel (MO native: AS OF TIMESTAMP)
+  timeTravel: (timestamp: string, branch = 'main') =>
+    fetch(`${API}/snapshots/time-travel?timestamp=${encodeURIComponent(timestamp)}&branch=${branch}`).then(r => r.json()),
+
+  // Archive branch (drops branch tables)
+  archiveBranch: (name: string) =>
+    fetch(`${API}/branches/${name}`, { method: 'DELETE' }).then(r => r.json()),
 };
 ```
 
@@ -300,23 +313,20 @@ interface BranchStore {
   branches: Branch[];
   activeBranch: string;
   facts: Fact[];
+  diffs: DiffRow[];
+  timeTravelFacts: Fact[];
+  timeTravelTs: string | null;
+  loading: boolean;
+  error: string | null;
+
   setActiveBranch: (branch: string) => void;
-  setFacts: (facts: Fact[]) => void;
+  fetchBranches: () => Promise<void>;
+  searchFacts: (query: string) => Promise<void>;
+  fetchDiff: (source: string, target?: string) => Promise<void>;
+  mergeBranch: (source: string, target: string, strategy: string, conflict?: string) => Promise<void>;
+  timeTravel: (timestamp: string) => Promise<void>;
+  clearError: () => void;
 }
-
-export const useBranchStore = create<BranchStore>((set) => ({
-  branches: [],
-  activeBranch: 'main',
-  facts: [],
-
-  setActiveBranch: (branch) => {
-    set({ activeBranch: branch });
-    // Fetch facts for new branch
-    api.searchFacts('', branch).then(set);
-  },
-
-  setFacts: (facts) => set({ facts }),
-}));
 ```
 
 ## Real-time Polling

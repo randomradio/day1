@@ -16,6 +16,7 @@ router = APIRouter()
 class SnapshotCreate(BaseModel):
     label: str | None = None
     branch: str = "main"
+    native: bool = False
 
 
 class TimeTravelQuery(BaseModel):
@@ -31,6 +32,12 @@ async def create_snapshot(
     session: AsyncSession = Depends(get_session),
 ):
     mgr = SnapshotManager(session)
+    if body.native:
+        result = await mgr.create_snapshot_native(
+            branch_name=body.branch,
+            label=body.label,
+        )
+        return result
     snapshot = await mgr.create_snapshot(
         branch_name=body.branch,
         label=body.label,
