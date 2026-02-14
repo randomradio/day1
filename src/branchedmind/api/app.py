@@ -6,7 +6,15 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from branchedmind.api.routes import branches, facts, observations, relations, search, snapshots, tasks
+from branchedmind.api.routes import (
+    branches,
+    facts,
+    observations,
+    relations,
+    search,
+    snapshots,
+    tasks,
+)
 from branchedmind.db.engine import init_db
 
 

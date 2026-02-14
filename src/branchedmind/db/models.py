@@ -74,9 +74,7 @@ class Fact(Base):
     metadata_json: Mapped[dict | None] = mapped_column(
         "metadata", JsonText, nullable=True
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
     )
@@ -103,16 +101,12 @@ class Relation(Base):
     relation_type: Mapped[str] = mapped_column(String(100), nullable=False)
     properties: Mapped[dict | None] = mapped_column(JsonText, nullable=True)
     confidence: Mapped[float] = mapped_column(Float, default=1.0)
-    valid_from: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now()
-    )
+    valid_from: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     valid_to: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     session_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     branch_name: Mapped[str] = mapped_column(String(100), default="main")
     task_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     __table_args__ = (
         Index("idx_relations_source", "source_entity"),
@@ -139,16 +133,12 @@ class Observation(Base):
     branch_name: Mapped[str] = mapped_column(String(100), default="main")
     task_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     agent_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    parent_observation_id: Mapped[str | None] = mapped_column(
-        String(36), nullable=True
-    )
+    parent_observation_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     outcome: Mapped[str | None] = mapped_column(String(20), nullable=True)
     metadata_json: Mapped[dict | None] = mapped_column(
         "metadata", JsonText, nullable=True
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     __table_args__ = (
         Index("idx_obs_session", "session_id"),
@@ -173,12 +163,8 @@ class Session(Base):
     agent_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="active")
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
-    metadata_json: Mapped[dict | None] = mapped_column(
-        "metadata", JSON, nullable=True
-    )
-    started_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now()
-    )
+    metadata_json: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
@@ -191,14 +177,10 @@ class BranchRegistry(Base):
     parent_branch: Mapped[str] = mapped_column(String(100), default="main")
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="active")
-    forked_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now()
-    )
+    forked_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     merged_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     merge_strategy: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    metadata_json: Mapped[dict | None] = mapped_column(
-        "metadata", JSON, nullable=True
-    )
+    metadata_json: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
 
 
 class MergeHistory(Base):
@@ -214,9 +196,7 @@ class MergeHistory(Base):
     items_rejected: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     conflict_resolution: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     merged_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
 class Snapshot(Base):
@@ -228,9 +208,7 @@ class Snapshot(Base):
     label: Mapped[str | None] = mapped_column(String(200), nullable=True)
     branch_name: Mapped[str] = mapped_column(String(100), default="main")
     snapshot_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
 # === Multi-Agent Task Memory ===
@@ -251,12 +229,8 @@ class Task(Base):
     tags: Mapped[list | None] = mapped_column(JSON, nullable=True)
     objectives: Mapped[list | None] = mapped_column(JSON, nullable=True)
     result_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
-    metadata_json: Mapped[dict | None] = mapped_column(
-        "metadata", JSON, nullable=True
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now()
-    )
+    metadata_json: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
     )
@@ -282,9 +256,7 @@ class TaskAgent(Base):
     status: Mapped[str] = mapped_column(String(20), default="active")
     assigned_objectives: Mapped[list | None] = mapped_column(JSON, nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
-    joined_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now()
-    )
+    joined_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     left_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     __table_args__ = (
@@ -311,6 +283,4 @@ class ConsolidationHistory(Base):
     facts_deduplicated: Mapped[int] = mapped_column(Integer, default=0)
     observations_processed: Mapped[int] = mapped_column(Integer, default=0)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

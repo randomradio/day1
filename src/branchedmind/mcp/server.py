@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from contextlib import asynccontextmanager
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -46,15 +45,17 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 name, arguments, session, get_active_branch, set_active_branch
             )
             return [TextContent(type="text", text=json.dumps(result, default=str))]
-    except Exception as e:
-        logger.exception(f"Tool {name} failed")
+    except Exception as e:  # Intentional catch-all: MCP protocol boundary
+        logger.exception("Tool %s failed", name)
         return [
             TextContent(
                 type="text",
                 text=json.dumps({"error": str(e), "tool": name}),
             )
         ]
-    return [TextContent(type="text", text=json.dumps({"error": "No session available"}))]
+    return [
+        TextContent(type="text", text=json.dumps({"error": "No session available"}))
+    ]
 
 
 async def main() -> None:

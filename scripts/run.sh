@@ -87,7 +87,6 @@ case "${1:-help}" in
         echo "  all         Test + API + Dashboard"
         echo ""
         echo "Requires: uv (https://docs.astral.sh/uv/)"
-        echo "MO Cloud connection is pre-configured in config.py."
-        echo "Override with: export BM_DATABASE_URL=\"mysql+aiomysql://...\""
+        echo "Set BM_DATABASE_URL in .env (see .env.example)."
         ;;
 esac

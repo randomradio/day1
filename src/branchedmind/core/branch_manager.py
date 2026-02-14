@@ -1,4 +1,4 @@
-"""Branch manager: create, list, switch, and manage memory branches (MatrixOne native)."""
+"""Branch manager: create, list, switch, and manage branches."""
 
 from __future__ import annotations
 
@@ -6,14 +6,15 @@ import logging
 import re
 from datetime import datetime
 
-logger = logging.getLogger(__name__)
-
 from sqlalchemy import select, text, update
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from branchedmind.core.exceptions import BranchExistsError, BranchNotFoundError
 from branchedmind.db.engine import get_autocommit_conn
 from branchedmind.db.models import BranchRegistry
+
+logger = logging.getLogger(__name__)
 
 # Tables that participate in branching via DATA BRANCH CREATE TABLE
 BRANCH_TABLES = ["facts", "relations", "observations"]
@@ -113,9 +114,7 @@ class BranchManager:
         await self._session.commit()
         return registry
 
-    async def list_branches(
-        self, status: str | None = None
-    ) -> list[BranchRegistry]:
+    async def list_branches(self, status: str | None = None) -> list[BranchRegistry]:
         """List all branches, optionally filtered by status."""
         stmt = select(BranchRegistry).order_by(BranchRegistry.forked_at.desc())
         if status:
@@ -168,12 +167,10 @@ class BranchManager:
                             row_dict["_table"] = table
                             all_diffs.append(row_dict)
                     break
-                except Exception as e:
+                except OperationalError as e:
                     last_err = e
                     if attempt == 0:
-                        logger.debug(
-                            "DIFF lost connection for %s, retrying", table
-                        )
+                        logger.debug("DIFF lost connection for %s, retrying", table)
             else:
                 logger.warning("DIFF failed for %s after retry: %s", table, last_err)
         return all_diffs
@@ -203,7 +200,7 @@ class BranchManager:
                     )
                     row = result.fetchone()
                     counts[table] = int(row[0]) if row else 0
-            except Exception:
+            except OperationalError:
                 # Fallback: run plain DIFF and count rows
                 logger.debug(
                     "OUTPUT COUNT failed for %s, falling back to row count", table

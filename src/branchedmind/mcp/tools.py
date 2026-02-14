@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
 
 from mcp.types import Tool
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +15,6 @@ from branchedmind.core.merge_engine import MergeEngine
 from branchedmind.core.observation_engine import ObservationEngine
 from branchedmind.core.relation_engine import RelationEngine
 from branchedmind.core.search_engine import SearchEngine
-from branchedmind.core.session_manager import SessionManager
 from branchedmind.core.snapshot_manager import SnapshotManager
 from branchedmind.core.task_engine import TaskEngine
 
@@ -26,7 +24,10 @@ TOOL_DEFINITIONS: list[Tool] = [
     # === Memory Write ===
     Tool(
         name="memory_write_fact",
-        description="Store a structured fact in memory. Facts are the core knowledge units.",
+        description=(
+            "Store a structured fact in memory."
+            " Facts are the core knowledge units."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
@@ -36,7 +37,10 @@ TOOL_DEFINITIONS: list[Tool] = [
                 },
                 "category": {
                     "type": "string",
-                    "description": "Category: bug_fix, architecture, preference, pattern, decision, etc.",
+                    "description": (
+                        "Category: bug_fix, architecture,"
+                        " preference, pattern, decision, etc."
+                    ),
                 },
                 "confidence": {
                     "type": "number",
@@ -52,13 +56,19 @@ TOOL_DEFINITIONS: list[Tool] = [
     ),
     Tool(
         name="memory_write_observation",
-        description="Store a tool call observation record. Captures what happened during tool use.",
+        description=(
+            "Store a tool call observation record."
+            " Captures what happened during tool use."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
                 "observation_type": {
                     "type": "string",
-                    "description": "Type: tool_use, discovery, decision, error, insight",
+                    "description": (
+                        "Type: tool_use, discovery,"
+                        " decision, error, insight"
+                    ),
                 },
                 "summary": {
                     "type": "string",
@@ -98,7 +108,10 @@ TOOL_DEFINITIONS: list[Tool] = [
                 },
                 "relation_type": {
                     "type": "string",
-                    "description": "Relation type: depends_on, causes, fixes, implements, etc.",
+                    "description": (
+                        "Relation type: depends_on,"
+                        " causes, fixes, implements, etc."
+                    ),
                 },
                 "properties": {
                     "type": "object",
@@ -112,7 +125,10 @@ TOOL_DEFINITIONS: list[Tool] = [
     # === Search ===
     Tool(
         name="memory_search",
-        description="Search memory using hybrid BM25 + vector search. Returns facts matching your query.",
+        description=(
+            "Search memory using hybrid BM25 + vector search."
+            " Returns facts matching your query."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
@@ -151,7 +167,10 @@ TOOL_DEFINITIONS: list[Tool] = [
     ),
     Tool(
         name="memory_graph_query",
-        description="Query the entity relationship graph. Find all connections to an entity.",
+        description=(
+            "Query the entity relationship graph."
+            " Find all connections to an entity."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
@@ -341,8 +360,14 @@ TOOL_DEFINITIONS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "name": {"type": "string", "description": "Task name (e.g. 'fix-oauth2-bug')"},
-                "description": {"type": "string", "description": "What this task aims to accomplish"},
+                "name": {
+                    "type": "string",
+                    "description": "Task name (e.g. 'fix-oauth2-bug')",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "What this task aims to accomplish",
+                },
                 "task_type": {
                     "type": "string",
                     "description": "Type: bug_fix, pr_review, feature, research, refactor, incident",
@@ -354,10 +379,16 @@ TOOL_DEFINITIONS: list[Tool] = [
                 },
                 "objectives": {
                     "type": "array",
-                    "items": {"type": "object", "properties": {"description": {"type": "string"}}},
+                    "items": {
+                        "type": "object",
+                        "properties": {"description": {"type": "string"}},
+                    },
                     "description": "Ordered list of objectives/subtasks",
                 },
-                "parent_branch": {"type": "string", "description": "Branch to fork from (default: main)"},
+                "parent_branch": {
+                    "type": "string",
+                    "description": "Branch to fork from (default: main)",
+                },
             },
             "required": ["name"],
         },
@@ -369,8 +400,14 @@ TOOL_DEFINITIONS: list[Tool] = [
             "type": "object",
             "properties": {
                 "task_id": {"type": "string", "description": "Task ID to join"},
-                "agent_id": {"type": "string", "description": "Unique agent identifier (global, cross-task)"},
-                "role": {"type": "string", "description": "Agent role: implementer, reviewer, tester"},
+                "agent_id": {
+                    "type": "string",
+                    "description": "Unique agent identifier (global, cross-task)",
+                },
+                "role": {
+                    "type": "string",
+                    "description": "Agent role: implementer, reviewer, tester",
+                },
                 "objectives": {
                     "type": "array",
                     "items": {"type": "integer"},
@@ -398,11 +435,26 @@ TOOL_DEFINITIONS: list[Tool] = [
             "type": "object",
             "properties": {
                 "task_id": {"type": "string"},
-                "objective_id": {"type": "integer", "description": "Objective to update"},
-                "objective_status": {"type": "string", "enum": ["done", "active", "todo", "blocked"]},
-                "agent_id": {"type": "string", "description": "Agent making the update"},
-                "notes": {"type": "string", "description": "Notes about completion or blockers"},
-                "task_status": {"type": "string", "enum": ["active", "completed", "paused", "failed"]},
+                "objective_id": {
+                    "type": "integer",
+                    "description": "Objective to update",
+                },
+                "objective_status": {
+                    "type": "string",
+                    "enum": ["done", "active", "todo", "blocked"],
+                },
+                "agent_id": {
+                    "type": "string",
+                    "description": "Agent making the update",
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "Notes about completion or blockers",
+                },
+                "task_status": {
+                    "type": "string",
+                    "enum": ["active", "completed", "paused", "failed"],
+                },
             },
             "required": ["task_id"],
         },
@@ -419,9 +471,18 @@ TOOL_DEFINITIONS: list[Tool] = [
                     "enum": ["session", "agent", "task"],
                     "description": "What level to consolidate",
                 },
-                "task_id": {"type": "string", "description": "Required for agent/task scope"},
-                "agent_id": {"type": "string", "description": "Required for agent scope"},
-                "session_id": {"type": "string", "description": "Required for session scope"},
+                "task_id": {
+                    "type": "string",
+                    "description": "Required for agent/task scope",
+                },
+                "agent_id": {
+                    "type": "string",
+                    "description": "Required for agent scope",
+                },
+                "session_id": {
+                    "type": "string",
+                    "description": "Required for session scope",
+                },
                 "branch": {"type": "string", "description": "Branch for session scope"},
             },
             "required": ["scope"],
@@ -434,10 +495,19 @@ TOOL_DEFINITIONS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "task_id": {"type": "string", "description": "Task ID to search within"},
+                "task_id": {
+                    "type": "string",
+                    "description": "Task ID to search within",
+                },
                 "query": {"type": "string", "description": "Search query"},
-                "agent_id": {"type": "string", "description": "Filter to a specific agent's memories"},
-                "limit": {"type": "integer", "description": "Max results (default: 10)"},
+                "agent_id": {
+                    "type": "string",
+                    "description": "Filter to a specific agent's memories",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results (default: 10)",
+                },
             },
             "required": ["task_id", "query"],
         },
@@ -462,7 +532,10 @@ TOOL_DEFINITIONS: list[Tool] = [
             "type": "object",
             "properties": {
                 "task_type": {"type": "string", "description": "Task type to analyze"},
-                "limit": {"type": "integer", "description": "Max tasks to include (default: 20)"},
+                "limit": {
+                    "type": "integer",
+                    "description": "Max tasks to include (default: 20)",
+                },
             },
             "required": ["task_type"],
         },
@@ -561,25 +634,29 @@ async def handle_tool_call(
 
         timeline = []
         for f in facts:
-            timeline.append({
-                "type": "fact",
-                "id": f.id,
-                "content": f.fact_text,
-                "category": f.category,
-                "timestamp": f.created_at.isoformat() if f.created_at else None,
-            })
+            timeline.append(
+                {
+                    "type": "fact",
+                    "id": f.id,
+                    "content": f.fact_text,
+                    "category": f.category,
+                    "timestamp": f.created_at.isoformat() if f.created_at else None,
+                }
+            )
         for o in observations:
-            timeline.append({
-                "type": "observation",
-                "id": o.id,
-                "content": o.summary,
-                "observation_type": o.observation_type,
-                "tool_name": o.tool_name,
-                "timestamp": o.created_at.isoformat() if o.created_at else None,
-            })
+            timeline.append(
+                {
+                    "type": "observation",
+                    "id": o.id,
+                    "content": o.summary,
+                    "observation_type": o.observation_type,
+                    "tool_name": o.tool_name,
+                    "timestamp": o.created_at.isoformat() if o.created_at else None,
+                }
+            )
 
         timeline.sort(key=lambda x: x.get("timestamp") or "", reverse=True)
-        return {"timeline": timeline[:arguments.get("limit", 50)]}
+        return {"timeline": timeline[: arguments.get("limit", 50)]}
 
     # === Branch Operations ===
     elif name == "memory_branch_create":

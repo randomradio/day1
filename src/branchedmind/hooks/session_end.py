@@ -12,6 +12,7 @@ import os
 
 from branchedmind.core.consolidation_engine import ConsolidationEngine
 from branchedmind.core.embedding import get_embedding_provider
+from branchedmind.core.exceptions import ConsolidationError, DatabaseError
 from branchedmind.core.observation_engine import ObservationEngine
 from branchedmind.core.session_manager import SessionManager
 from branchedmind.hooks.base import (
@@ -37,9 +38,7 @@ async def handler(input_data: dict) -> dict:
     agent_id = os.environ.get("BM_AGENT_ID")
 
     # Gather all observations from this session for summary
-    observations = await obs_engine.list_observations(
-        session_id=sid, limit=100
-    )
+    observations = await obs_engine.list_observations(session_id=sid, limit=100)
 
     # Generate summary from observations
     summary = _generate_session_summary(observations)
@@ -67,7 +66,7 @@ async def handler(input_data: dict) -> dict:
                 task_id=task_id,
                 agent_id=agent_id,
             )
-        except Exception:
+        except (ConsolidationError, DatabaseError):
             pass  # Graceful degradation
 
     # Mark session as completed

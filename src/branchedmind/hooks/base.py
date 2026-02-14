@@ -7,12 +7,10 @@ and write output to stdout as JSON.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 import sys
 
-from branchedmind.config import settings
 from branchedmind.db.engine import get_session, init_db
 
 
@@ -31,7 +29,7 @@ def read_hook_input() -> dict:
             data = sys.stdin.read()
             if data.strip():
                 return json.loads(data)
-    except (json.JSONDecodeError, IOError):
+    except (OSError, json.JSONDecodeError):
         pass
     return {}
 

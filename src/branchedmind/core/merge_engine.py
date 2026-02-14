@@ -93,14 +93,19 @@ class MergeEngine:
             best_match = self._find_similar_fact(sf, target_facts)
             if best_match is None:
                 new_facts.append(sf)
-            elif best_match["similarity"] > 0.85 and sf.fact_text != best_match["fact"].fact_text:
-                conflicts.append({
-                    "source_id": sf.id,
-                    "target_id": best_match["fact"].id,
-                    "source_text": sf.fact_text,
-                    "target_text": best_match["fact"].fact_text,
-                    "similarity": best_match["similarity"],
-                })
+            elif (
+                best_match["similarity"] > 0.85
+                and sf.fact_text != best_match["fact"].fact_text
+            ):
+                conflicts.append(
+                    {
+                        "source_id": sf.id,
+                        "target_id": best_match["fact"].id,
+                        "source_text": sf.fact_text,
+                        "target_text": best_match["fact"].fact_text,
+                        "similarity": best_match["similarity"],
+                    }
+                )
 
         # Find new relations
         source_rels = await self._get_relations(source_branch)
@@ -176,9 +181,7 @@ class MergeEngine:
         result["merge_id"] = merge_record.id
         return result
 
-    async def _cherry_pick(
-        self, source: str, target: str, item_ids: list[str]
-    ) -> dict:
+    async def _cherry_pick(self, source: str, target: str, item_ids: list[str]) -> dict:
         """Selectively merge specific items."""
         merged_count = 0
 
@@ -249,9 +252,7 @@ class MergeEngine:
         merged_ids: list[str] = []
         rejected_ids: list[str] = []
 
-        conflict_fact_ids = {
-            c["source_id"] for c in diff.conflicts
-        }
+        conflict_fact_ids = {c["source_id"] for c in diff.conflicts}
 
         # Merge non-conflicting facts
         for fact in diff.new_facts:
@@ -422,9 +423,7 @@ class MergeEngine:
         return list(result.scalars().all())
 
     @staticmethod
-    def _find_similar_fact(
-        fact: Fact, candidates: list[Fact]
-    ) -> dict | None:
+    def _find_similar_fact(fact: Fact, candidates: list[Fact]) -> dict | None:
         """Find the most similar fact in candidates using embedding similarity."""
         if not fact.embedding or not candidates:
             return None

@@ -82,16 +82,13 @@ class RelationEngine:
                 continue
             visited.add(current)
 
-            stmt = (
-                select(Relation)
-                .where(
-                    Relation.branch_name == branch_name,
-                    Relation.valid_to.is_(None),
-                    or_(
-                        Relation.source_entity == current,
-                        Relation.target_entity == current,
-                    ),
-                )
+            stmt = select(Relation).where(
+                Relation.branch_name == branch_name,
+                Relation.valid_to.is_(None),
+                or_(
+                    Relation.source_entity == current,
+                    Relation.target_entity == current,
+                ),
             )
             if relation_type:
                 stmt = stmt.where(Relation.relation_type == relation_type)
@@ -103,14 +100,16 @@ class RelationEngine:
                 if rel.id in seen_rel_ids:
                     continue
                 seen_rel_ids.add(rel.id)
-                results.append({
-                    "source": rel.source_entity,
-                    "target": rel.target_entity,
-                    "relation": rel.relation_type,
-                    "properties": rel.properties,
-                    "confidence": rel.confidence,
-                    "id": rel.id,
-                })
+                results.append(
+                    {
+                        "source": rel.source_entity,
+                        "target": rel.target_entity,
+                        "relation": rel.relation_type,
+                        "properties": rel.properties,
+                        "confidence": rel.confidence,
+                        "id": rel.id,
+                    }
+                )
                 # Enqueue neighbors
                 neighbor = (
                     rel.target_entity

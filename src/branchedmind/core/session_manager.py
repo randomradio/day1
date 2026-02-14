@@ -47,9 +47,7 @@ class SessionManager:
         )
         return result.scalar_one_or_none()
 
-    async def end_session(
-        self, session_id: str, summary: str | None = None
-    ) -> None:
+    async def end_session(self, session_id: str, summary: str | None = None) -> None:
         """Mark a session as completed."""
         await self._session.execute(
             update(Session)
@@ -68,11 +66,7 @@ class SessionManager:
         limit: int = 5,
     ) -> list[Session]:
         """Get recent sessions."""
-        stmt = (
-            select(Session)
-            .order_by(Session.started_at.desc())
-            .limit(limit)
-        )
+        stmt = select(Session).order_by(Session.started_at.desc()).limit(limit)
         if branch_name:
             stmt = stmt.where(Session.branch_name == branch_name)
         result = await self._session.execute(stmt)

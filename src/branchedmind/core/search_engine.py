@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -75,11 +75,13 @@ class SearchEngine:
 
         # Apply temporal scoring if enabled
         if temporal_weight > 0:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             for r in results.values():
                 relevance = r["score"]
                 recency = _recency_score(r.get("created_at"), now)
-                r["score"] = relevance * (1 - temporal_weight) + recency * temporal_weight
+                r["score"] = (
+                    relevance * (1 - temporal_weight) + recency * temporal_weight
+                )
 
         # Sort by score descending and limit
         sorted_results = sorted(
@@ -307,10 +309,7 @@ class SearchEngine:
         where_sql = " AND ".join(where_parts)
 
         fts_result = await self._session.execute(
-            text(
-                f"SELECT id FROM observations WHERE {where_sql} "
-                f"LIMIT :limit"
-            ),
+            text(f"SELECT id FROM observations WHERE {where_sql} " f"LIMIT :limit"),
             params,
         )
         fts_rows = fts_result.fetchall()
@@ -366,7 +365,7 @@ def _recency_score(created_at_iso: str | None, now: datetime) -> float:
     try:
         created = datetime.fromisoformat(created_at_iso)
         if created.tzinfo is None:
-            created = created.replace(tzinfo=timezone.utc)
+            created = created.replace(tzinfo=UTC)
         hours_old = max((now - created).total_seconds() / 3600, 0)
         return math.exp(-0.005 * hours_old)
     except (ValueError, TypeError):

@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from branchedmind.core.consolidation_engine import ConsolidationEngine
-from branchedmind.core.exceptions import TaskNotFoundError, TaskAgentError
+from branchedmind.core.exceptions import TaskAgentError, TaskNotFoundError
 from branchedmind.core.task_engine import TaskEngine
 from branchedmind.db.engine import get_session
 
@@ -108,9 +108,7 @@ async def list_tasks(
     session: AsyncSession = Depends(get_session),
 ):
     engine = TaskEngine(session)
-    tasks = await engine.list_tasks(
-        status=status, task_type=task_type, limit=limit
-    )
+    tasks = await engine.list_tasks(status=status, task_type=task_type, limit=limit)
     return {
         "tasks": [
             TaskResponse(

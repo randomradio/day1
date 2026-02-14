@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     """BranchedMind configuration."""
 
     # Database (MatrixOne via aiomysql)
-    database_url: str = "mysql+aiomysql://0193bd50-818d-76ba-bb43-a2abd031d6e5%3Aadmin%3Aaccountadmin:AIcon2024@freetier-01.cn-hangzhou.cluster.matrixonecloud.cn:6001/branchedmind"
+    database_url: str = "mysql+aiomysql://user:pass@localhost:6001/branchedmind"
 
     # Embedding
     embedding_provider: str = "openai"  # "openai" | "mock"

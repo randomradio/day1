@@ -152,9 +152,7 @@ class ConsolidationEngine:
         )
         agent = result.scalar_one_or_none()
         if agent is None:
-            raise ConsolidationError(
-                f"No agent '{agent_id}' found on task '{task_id}'"
-            )
+            raise ConsolidationError(f"No agent '{agent_id}' found on task '{task_id}'")
 
         # Deduplicate facts on agent branch
         deduplicated = await self._deduplicate_facts(agent.branch_name)
@@ -196,9 +194,7 @@ class ConsolidationEngine:
         Returns:
             Dict with durable_fact_ids, ephemeral_count.
         """
-        result = await self._session.execute(
-            select(Task).where(Task.id == task_id)
-        )
+        result = await self._session.execute(select(Task).where(Task.id == task_id))
         task = result.scalar_one_or_none()
         if task is None:
             raise ConsolidationError(f"Task '{task_id}' not found")
@@ -206,17 +202,18 @@ class ConsolidationEngine:
         facts = await self._get_active_facts(task.branch_name)
 
         durable_categories = {
-            "bug_fix", "architecture", "pattern", "decision",
-            "security", "performance",
+            "bug_fix",
+            "architecture",
+            "pattern",
+            "decision",
+            "security",
+            "performance",
         }
         durable_facts = []
         ephemeral_count = 0
 
         for fact in facts:
-            is_durable = (
-                fact.confidence >= 0.8
-                and fact.category in durable_categories
-            )
+            is_durable = fact.confidence >= 0.8 and fact.category in durable_categories
             if is_durable:
                 durable_facts.append(fact.id)
             else:

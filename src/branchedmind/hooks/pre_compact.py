@@ -99,9 +99,19 @@ def _extract_facts_heuristic(transcript: str) -> list[dict]:
             continue
         # Look for declarative patterns
         indicators = [
-            "uses ", "requires ", "depends on ", "is configured",
-            "was fixed", "caused by", "the project", "the system",
-            "architecture", "pattern", "bug", "error", "solution",
+            "uses ",
+            "requires ",
+            "depends on ",
+            "is configured",
+            "was fixed",
+            "caused by",
+            "the project",
+            "the system",
+            "architecture",
+            "pattern",
+            "bug",
+            "error",
+            "solution",
         ]
         if any(ind in line.lower() for ind in indicators):
             category = "general"
@@ -138,11 +148,13 @@ def _extract_relations_heuristic(transcript: str) -> list[dict]:
                     source = parts[0].strip().split()[-1] if parts[0].strip() else ""
                     target = parts[1].strip().split()[0] if parts[1].strip() else ""
                     if source and target and len(source) > 2 and len(target) > 2:
-                        relations.append({
-                            "source": source.title(),
-                            "target": target.title(),
-                            "type": rel_type,
-                        })
+                        relations.append(
+                            {
+                                "source": source.title(),
+                                "target": target.title(),
+                                "type": rel_type,
+                            }
+                        )
     return relations[:10]
 
 

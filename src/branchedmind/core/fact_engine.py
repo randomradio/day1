@@ -80,9 +80,7 @@ class FactEngine:
         Raises:
             FactNotFoundError: If fact doesn't exist.
         """
-        result = await self._session.execute(
-            select(Fact).where(Fact.id == fact_id)
-        )
+        result = await self._session.execute(select(Fact).where(Fact.id == fact_id))
         fact = result.scalar_one_or_none()
         if fact is None:
             raise FactNotFoundError(f"Fact {fact_id} not found")
@@ -159,6 +157,4 @@ class FactEngine:
     async def supersede_fact(self, old_id: str, new_text: str, **kwargs) -> Fact:
         """Create a new fact that supersedes an old one."""
         await self.update_fact(old_id, status="superseded")
-        return await self.write_fact(
-            fact_text=new_text, parent_id=old_id, **kwargs
-        )
+        return await self.write_fact(fact_text=new_text, parent_id=old_id, **kwargs)

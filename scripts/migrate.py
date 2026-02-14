@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Database migration script: create all tables."""
 
 from __future__ import annotations
@@ -7,8 +8,8 @@ import sys
 
 sys.path.insert(0, "src")
 
-from branchedmind.db.engine import init_db, get_session
 from branchedmind.core.branch_manager import BranchManager
+from branchedmind.db.engine import get_session, init_db
 
 
 async def main() -> None:

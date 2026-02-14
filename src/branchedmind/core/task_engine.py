@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from branchedmind.core.branch_manager import BranchManager
 from branchedmind.core.exceptions import TaskAgentError, TaskNotFoundError
 from branchedmind.core.merge_engine import MergeEngine
-from branchedmind.db.models import Fact, Observation, Session, Task, TaskAgent
+from branchedmind.db.models import Fact, Observation, Task, TaskAgent
 
 
 class TaskEngine:
@@ -51,7 +51,11 @@ class TaskEngine:
             numbered_objectives = [
                 {
                     "id": i + 1,
-                    "description": obj.get("description", obj) if isinstance(obj, dict) else str(obj),
+                    "description": (
+                        obj.get("description", obj)
+                        if isinstance(obj, dict)
+                        else str(obj)
+                    ),
                     "status": "todo",
                     "agent_id": None,
                 }
@@ -86,9 +90,7 @@ class TaskEngine:
         Raises:
             TaskNotFoundError: If task doesn't exist.
         """
-        result = await self._session.execute(
-            select(Task).where(Task.id == task_id)
-        )
+        result = await self._session.execute(select(Task).where(Task.id == task_id))
         task = result.scalar_one_or_none()
         if task is None:
             raise TaskNotFoundError(f"Task {task_id} not found")
@@ -338,9 +340,7 @@ class TaskEngine:
         )
         agent = result.scalar_one_or_none()
         if agent is None:
-            raise TaskAgentError(
-                f"No active agent '{agent_id}' on task '{task_id}'"
-            )
+            raise TaskAgentError(f"No active agent '{agent_id}' on task '{task_id}'")
 
         # Mark agent as completed
         await self._session.execute(
@@ -357,7 +357,10 @@ class TaskEngine:
         if agent.assigned_objectives and task.objectives:
             updated = list(task.objectives)
             for obj in updated:
-                if obj["id"] in agent.assigned_objectives and obj.get("agent_id") == agent_id:
+                if (
+                    obj["id"] in agent.assigned_objectives
+                    and obj.get("agent_id") == agent_id
+                ):
                     obj["status"] = "done"
             await self._session.execute(
                 update(Task)
@@ -558,17 +561,23 @@ class TaskEngine:
             )
             agents = list(agent_result.scalars().all())
 
-            task_summaries.append({
-                "id": task.id,
-                "name": task.name,
-                "status": task.status,
-                "tags": task.tags,
-                "agent_count": len(agents),
-                "objective_count": len(task.objectives) if task.objectives else 0,
-                "result_summary": task.result_summary,
-                "created_at": task.created_at.isoformat() if task.created_at else None,
-                "completed_at": task.completed_at.isoformat() if task.completed_at else None,
-            })
+            task_summaries.append(
+                {
+                    "id": task.id,
+                    "name": task.name,
+                    "status": task.status,
+                    "tags": task.tags,
+                    "agent_count": len(agents),
+                    "objective_count": len(task.objectives) if task.objectives else 0,
+                    "result_summary": task.result_summary,
+                    "created_at": (
+                        task.created_at.isoformat() if task.created_at else None
+                    ),
+                    "completed_at": (
+                        task.completed_at.isoformat() if task.completed_at else None
+                    ),
+                }
+            )
 
         return {
             "task_type": task_type,

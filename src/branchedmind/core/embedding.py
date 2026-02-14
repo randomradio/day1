@@ -6,6 +6,7 @@ import hashlib
 from abc import ABC, abstractmethod
 
 import numpy as np
+import openai
 
 from branchedmind.config import settings
 from branchedmind.core.exceptions import EmbeddingError
@@ -43,7 +44,7 @@ class OpenAIEmbedding(EmbeddingProvider):
                 dimensions=self._dims,
             )
             return resp.data[0].embedding
-        except Exception as e:
+        except openai.APIError as e:
             raise EmbeddingError(f"OpenAI embedding failed: {e}") from e
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
@@ -54,7 +55,7 @@ class OpenAIEmbedding(EmbeddingProvider):
                 dimensions=self._dims,
             )
             return [d.embedding for d in resp.data]
-        except Exception as e:
+        except openai.APIError as e:
             raise EmbeddingError(f"OpenAI batch embedding failed: {e}") from e
 
 
@@ -66,9 +67,7 @@ class MockEmbedding(EmbeddingProvider):
 
     async def embed(self, text: str) -> list[float]:
         digest = hashlib.sha256(text.encode()).digest()
-        rng = np.random.RandomState(
-            int.from_bytes(digest[:4], "big")
-        )
+        rng = np.random.RandomState(int.from_bytes(digest[:4], "big"))
         vec = rng.randn(self._dims).astype(np.float32)
         # Normalize to unit vector
         norm = np.linalg.norm(vec)

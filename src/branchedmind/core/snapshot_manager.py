@@ -40,9 +40,7 @@ class SnapshotManager:
         """
         # Capture current state
         facts = await self._session.execute(
-            select(Fact).where(
-                Fact.branch_name == branch_name, Fact.status == "active"
-            )
+            select(Fact).where(Fact.branch_name == branch_name, Fact.status == "active")
         )
         relations = await self._session.execute(
             select(Relation).where(
@@ -123,9 +121,7 @@ class SnapshotManager:
             "branch_name": branch_name,
         }
 
-    async def list_snapshots(
-        self, branch_name: str | None = None
-    ) -> list[Snapshot]:
+    async def list_snapshots(self, branch_name: str | None = None) -> list[Snapshot]:
         """List all snapshots, optionally filtered by branch."""
         stmt = select(Snapshot).order_by(Snapshot.created_at.desc())
         if branch_name:

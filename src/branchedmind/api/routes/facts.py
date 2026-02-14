@@ -126,9 +126,7 @@ async def list_facts(
     session: AsyncSession = Depends(get_session),
 ):
     engine = FactEngine(session, get_embedding_provider())
-    facts = await engine.list_facts(
-        branch_name=branch, category=category, limit=limit
-    )
+    facts = await engine.list_facts(branch_name=branch, category=category, limit=limit)
     return {
         "facts": [
             FactResponse(

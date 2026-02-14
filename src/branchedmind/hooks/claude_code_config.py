@@ -7,7 +7,6 @@ This module generates the hooks configuration that should be added to
 from __future__ import annotations
 
 import json
-import sys
 
 
 def generate_hooks_config() -> dict:

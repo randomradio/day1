@@ -6,6 +6,7 @@ import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
+from sqlalchemy import exc as sa_exc
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncConnection,
@@ -54,7 +55,7 @@ async def init_db() -> None:
         for stmt in fulltext_stmts:
             try:
                 await conn.execute(text(stmt))
-            except Exception as e:
+            except sa_exc.DatabaseError as e:
                 logger.debug("Fulltext index may already exist: %s", e)
 
 

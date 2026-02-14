@@ -11,6 +11,7 @@ import os
 
 from branchedmind.core.branch_manager import BranchManager
 from branchedmind.core.embedding import get_embedding_provider
+from branchedmind.core.exceptions import DatabaseError, TaskNotFoundError
 from branchedmind.core.fact_engine import FactEngine
 from branchedmind.core.session_manager import SessionManager
 from branchedmind.core.task_engine import TaskEngine
@@ -82,9 +83,7 @@ async def handler() -> dict:
                         if obj.get("agent_id") and obj["status"] == "done"
                         else ""
                     )
-                    context_parts.append(
-                        f"- {icon} {obj['description']}{agent_note}"
-                    )
+                    context_parts.append(f"- {icon} {obj['description']}{agent_note}")
 
             # Previous agent work
             if task_context.get("agent_summaries"):
@@ -111,7 +110,7 @@ async def handler() -> dict:
                     f"{progress.get('todo', 0)} remaining"
                 )
 
-        except Exception:
+        except (TaskNotFoundError, DatabaseError):
             pass  # Graceful degradation if task not found
 
     else:
