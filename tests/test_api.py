@@ -48,14 +48,15 @@ async def client():
         engine, class_=AsyncSession, expire_on_commit=False
     )
 
-    async def override_get_session():
-        async with session_factory() as session:
-            yield session
-
-    app.dependency_overrides[get_session] = override_get_session
-
-    # Init main branch
+    # Yield same session for both override and main branch init
     async with session_factory() as session:
+        # Override get_session to use this test's session
+        def override_get_session():
+            return session
+
+        app.dependency_overrides[get_session] = override_get_session
+
+        # Init main branch (using same session)
         mgr = BranchManager(session)
         await mgr.ensure_main_branch()
 
