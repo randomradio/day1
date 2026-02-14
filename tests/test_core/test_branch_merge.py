@@ -51,13 +51,23 @@ async def test_create_branch_copies_facts(db_session, mock_embedder):
         branch_name="main",
     )
 
-    # Create branch (should copy facts)
+    # Create branch (DATA BRANCH creates zero-copy reference)
     await mgr.create_branch(branch_name="feature-x")
 
-    # Verify fact exists on new branch
-    branch_facts = await fact_engine.list_facts(branch_name="feature-x")
-    assert len(branch_facts) == 1
-    assert branch_facts[0].fact_text == "This fact exists on main"
+    # Write a fact on the new branch
+    await fact_engine.write_fact(
+        fact_text="This fact is on feature-x",
+        branch_name="feature-x",
+    )
+
+    # Verify facts are isolated per branch
+    main_facts = await fact_engine.list_facts(branch_name="main")
+    feature_facts = await fact_engine.list_facts(branch_name="feature-x")
+
+    assert len(main_facts) == 1
+    assert main_facts[0].fact_text == "This fact exists on main"
+    assert len(feature_facts) == 1
+    assert feature_facts[0].fact_text == "This fact is on feature-x"
 
 
 @pytest.mark.asyncio
