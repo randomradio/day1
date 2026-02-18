@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project: BranchedMind v2
+## Project: Day1 (BranchedMind v2 Memory Layer)
 
 **WHAT**: A Git-like memory layer for AI agents - managing writes, retrieval, branching, merging, snapshots, and time-travel.
 
@@ -53,3 +53,64 @@ Unlike `claude-mem`, BranchedMind adds: branch/merge, PITR/time-travel, multi-ag
 ---
 
 **Full design document**: `branched-memory-v2-pure-memory-layer.md`
+
+---
+
+## Day1 Memory Integration
+
+This project uses Day1 (BranchedMind v2) MCP tools for persistent memory across sessions.
+
+### Automatic Session Tracking
+
+Every Claude Code session is tracked with a unique `session_id`. Memory operations happen automatically:
+
+- **Session facts** are stored via `memory_write_fact`
+- **Tool observations** are captured via `memory_write_observation`
+- **Semantic search** retrieves relevant context via `memory_search`
+
+### Key MCP Memory Tools
+
+Use these during work:
+
+| Tool | Purpose | When to Use |
+|------|---------|-------------|
+| `memory_write_fact` | Store structured facts | After learning decisions, patterns, bugs |
+| `memory_search` | Semantic + keyword search | Before starting work, to find context |
+| `memory_graph_query` | Query entity relationships | Exploring connections between components |
+| `memory_branch_create` | Create isolated branch | Before experimental changes |
+| `memory_branch_switch` | Switch branches | Working on different features |
+| `memory_snapshot` | Point-in-time snapshot | Before risky changes |
+| `memory_timeline` | Chronological history | Reviewing session activity |
+
+### Initialization
+
+**No manual init needed** - The first session automatically:
+- Creates "main" branch
+- Registers the current session
+- Makes memory tools available
+
+Just start working - memory is automatic!
+
+### Before Starting Work
+
+```
+# Search for relevant context from prior sessions
+Use memory_search with query describing your task
+```
+
+### After Learning Something
+
+```
+# Store for future reference
+Use memory_write_fact with:
+- fact_text: Clear description
+- category: "pattern" | "decision" | "bug_fix" | "architecture"
+- confidence: 0.0-1.0
+```
+
+### Before Risky Changes
+
+```
+# Create snapshot to revert if needed
+Use memory_snapshot with label describing the change
+```
