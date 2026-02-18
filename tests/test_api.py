@@ -31,7 +31,19 @@ async def client():
     """Create test client with fresh isolated database."""
     engine = create_async_engine(_TEST_DB_URL, echo=False)
 
+    # Cleanup: drop ALL tables including DATA BRANCH tables
     async with engine.begin() as conn:
+        # First, drop any branch tables (suffixed versions of base tables)
+        result = await conn.execute(text("SHOW TABLES"))
+        all_tables = [row[0] for row in result.fetchall()]
+        base_tables = {"facts", "relations", "observations", "branch_registry", "merge_history", "sessions", "snapshots"}
+        for tbl in all_tables:
+            if tbl not in base_tables:
+                try:
+                    await conn.execute(text(f"DROP TABLE IF EXISTS `{tbl}`"))
+                except Exception:
+                    pass
+
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
         # Create FULLTEXT indexes (MO replaces FTS5)
@@ -48,24 +60,37 @@ async def client():
         engine, class_=AsyncSession, expire_on_commit=False
     )
 
-    # Yield same session for both override and main branch init
+    # Create session that will be kept alive for tests
     async with session_factory() as session:
-        # Override get_session to use this test's session
-        def override_get_session():
-            return session
+        # Init main branch before setting up dependency override
+        mgr = BranchManager(session)
+        await mgr.ensure_main_branch()
+        await session.commit()
+
+        # Override get_session to yield a fresh session per request
+        async def override_get_session():
+            async with session_factory() as test_session:
+                yield test_session
 
         app.dependency_overrides[get_session] = override_get_session
 
-        # Init main branch (using same session)
-        mgr = BranchManager(session)
-        await mgr.ensure_main_branch()
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac_client:
+            yield ac_client
 
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        yield client
+        app.dependency_overrides.clear()
 
-    app.dependency_overrides.clear()
+    # Cleanup: drop ALL tables including DATA BRANCH tables
     async with engine.begin() as conn:
+        base_tables = {"facts", "relations", "observations", "branch_registry", "merge_history", "sessions", "snapshots"}
+        result = await conn.execute(text("SHOW TABLES"))
+        all_tables = [row[0] for row in result.fetchall()]
+        for tbl in all_tables:
+            if tbl not in base_tables:
+                try:
+                    await conn.execute(text(f"DROP TABLE IF EXISTS `{tbl}`"))
+                except Exception:
+                    pass
         await conn.run_sync(Base.metadata.drop_all)
     await engine.dispose()
 

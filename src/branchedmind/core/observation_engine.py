@@ -72,6 +72,7 @@ class ObservationEngine:
         self._session.add(obs)
         # MO FULLTEXT INDEX auto-indexes — no manual FTS insert needed
         await self._session.commit()
+        await self._session.refresh(obs)
         return obs
 
     async def get_observation(self, obs_id: str) -> Observation | None:

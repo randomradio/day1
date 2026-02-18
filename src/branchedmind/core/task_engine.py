@@ -368,6 +368,9 @@ class TaskEngine:
                 .values(objectives=updated, updated_at=datetime.utcnow())
             )
 
+        # Commit ORM changes before merge (which uses DATA BRANCH operations)
+        await self._session.commit()
+
         # Merge agent branch → task branch
         merge_engine = MergeEngine(self._session)
         merge_result = await merge_engine.merge(
@@ -410,14 +413,17 @@ class TaskEngine:
 
         merge_result = None
         if merge_to_main:
+            # Commit ORM changes before merge (which uses DATA BRANCH operations)
+            await self._session.commit()
             merge_engine = MergeEngine(self._session)
             merge_result = await merge_engine.merge(
                 source_branch=task.branch_name,
                 target_branch=task.parent_branch,
                 strategy="auto",
             )
+        else:
+            await self._session.commit()
 
-        await self._session.commit()
         return {
             "task_id": task_id,
             "status": "completed",

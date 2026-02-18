@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import re
+from contextlib import asynccontextmanager
 from datetime import datetime
 
 from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from branchedmind.config import settings
 from branchedmind.core.branch_manager import _branch_table
 from branchedmind.core.exceptions import SnapshotError
-from branchedmind.db.engine import get_autocommit_conn
 from branchedmind.db.models import Fact, Observation, Relation, Snapshot
 
 # Extract database name from connection URL for SNAPSHOT commands
@@ -23,6 +23,17 @@ class SnapshotManager:
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+
+    @asynccontextmanager
+    async def _get_autocommit_conn(self) -> AsyncConnection:
+        """Get an autocommit connection from the session's engine.
+
+        Using the session's engine avoids event loop conflicts in tests
+        where the global engine might be tied to a different event loop.
+        """
+        async with self._session.bind.connect() as raw_conn:
+            conn = await raw_conn.execution_options(isolation_level="AUTOCOMMIT")
+            yield conn
 
     async def create_snapshot(
         self,
@@ -81,6 +92,7 @@ class SnapshotManager:
         )
         self._session.add(snapshot)
         await self._session.commit()
+        await self._session.refresh(snapshot)
         return snapshot
 
     async def create_snapshot_native(
@@ -101,7 +113,7 @@ class SnapshotManager:
         snap_name = f"sp_{safe_label}_{int(datetime.utcnow().timestamp())}"
 
         # CREATE SNAPSHOT requires autocommit (not inside a transaction)
-        async with get_autocommit_conn() as ac:
+        async with self._get_autocommit_conn() as ac:
             await ac.execute(
                 text(f"CREATE SNAPSHOT {snap_name} FOR DATABASE `{_db_name}`")
             )

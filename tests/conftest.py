@@ -82,9 +82,10 @@ async def db_session():
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async with session_factory() as session:
-        # Ensure main branch
+        # Ensure main branch exists and is committed
         mgr = BranchManager(session)
         await mgr.ensure_main_branch()
+        await session.commit()
         yield session
 
     # Cleanup: drop ALL tables including DATA BRANCH tables

@@ -51,6 +51,7 @@ class RelationEngine:
         )
         self._session.add(rel)
         await self._session.commit()
+        await self._session.refresh(rel)
         return rel
 
     async def graph_query(

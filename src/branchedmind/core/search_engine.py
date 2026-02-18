@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import math
 from datetime import UTC, datetime
 
 from sqlalchemy import select, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from branchedmind.core.embedding import (
@@ -14,6 +16,8 @@ from branchedmind.core.embedding import (
     get_embedding_provider,
 )
 from branchedmind.db.models import Fact, Observation
+
+logger = logging.getLogger(__name__)
 
 
 class SearchEngine:
@@ -97,7 +101,7 @@ class SearchEngine:
         tags: list[str] | None = None,
         limit: int = 10,
     ) -> list[dict]:
-        """Search across branches using MATCH AGAINST.
+        """Search across branches using MATCH AGAINST with LIKE fallback.
 
         Args:
             query: Search query.
@@ -112,21 +116,52 @@ class SearchEngine:
         if not query.strip():
             return []
 
-        # MO FULLTEXT search (branch-agnostic)
-        fts_result = await self._session.execute(
-            text(
-                "SELECT id, MATCH(fact_text, category) AGAINST(:query IN NATURAL LANGUAGE MODE) AS score "
-                "FROM facts WHERE MATCH(fact_text, category) AGAINST(:query IN NATURAL LANGUAGE MODE) "
-                "ORDER BY score DESC LIMIT :limit"
-            ),
-            {"query": query, "limit": limit * 3},
-        )
-        fts_rows = fts_result.fetchall()
-        if not fts_rows:
-            return []
+        # Try MATCH AGAINST first, fall back to LIKE on error
+        try:
+            # MO FULLTEXT search (branch-agnostic)
+            fts_result = await self._session.execute(
+                text(
+                    "SELECT id, MATCH(fact_text, category) AGAINST(:query IN NATURAL LANGUAGE MODE) AS score "
+                    "FROM facts WHERE MATCH(fact_text, category) AGAINST(:query IN NATURAL LANGUAGE MODE) "
+                    "ORDER BY score DESC LIMIT :limit"
+                ),
+                {"query": query, "limit": limit * 3},
+            )
+            fts_rows = fts_result.fetchall()
+            if not fts_rows:
+                return []
 
-        fts_ids = [row[0] for row in fts_rows]
-        fts_scores = {row[0]: float(row[1]) for row in fts_rows}
+            fts_ids = [row[0] for row in fts_rows]
+            fts_scores = {row[0]: float(row[1]) for row in fts_rows}
+        except OperationalError as e:
+            if "MATCH" in str(e) or "not supported" in str(e):
+                logger.debug("MATCH AGAINST not supported for cross-branch, falling back to LIKE")
+                # Fallback: use LIKE to get matching fact IDs
+                words = [w for w in query.strip().split() if w]
+                if not words:
+                    return []
+                like_conditions = " OR ".join(
+                    [f"fact_text LIKE :word{i}" for i in range(len(words))]
+                )
+                like_params = {f"word{i}": f"%{w}%" for i, w in enumerate(words)}
+                like_params["limit"] = limit * 3
+
+                fts_result = await self._session.execute(
+                    text(
+                        f"SELECT id FROM facts WHERE ({like_conditions}) "
+                        "AND status = 'active' LIMIT :limit"
+                    ),
+                    like_params,
+                )
+                fts_rows = fts_result.fetchall()
+                if not fts_rows:
+                    return []
+
+                fts_ids = [row[0] for row in fts_rows]
+                # Score based on word count
+                fts_scores = {fid: 1.0 for fid in fts_ids}  # Uniform score for LIKE fallback
+            else:
+                raise
 
         # Fetch facts with dimension filters
         stmt = select(Fact).where(
@@ -157,12 +192,36 @@ class SearchEngine:
         limit: int,
         time_range: dict | None,
     ) -> list[dict]:
-        """BM25 search using MatrixOne FULLTEXT INDEX + MATCH AGAINST."""
+        """BM25 search using MatrixOne FULLTEXT INDEX + MATCH AGAINST.
+
+        Falls back to LIKE query if MATCH AGAINST is not supported.
+        """
         if not query.strip():
             # Empty query: return recent facts
             return await self._recent_facts(branch_name, category, limit)
 
-        # MO MATCH AGAINST query
+        # Try MATCH AGAINST first, fall back to LIKE on error
+        try:
+            return await self._match_against_search(
+                query, branch_name, category, limit, time_range
+            )
+        except OperationalError as e:
+            if "MATCH" in str(e) or "not supported" in str(e):
+                logger.debug("MATCH AGAINST not supported, falling back to LIKE search")
+                return await self._like_search(
+                    query, branch_name, category, limit, time_range
+                )
+            raise
+
+    async def _match_against_search(
+        self,
+        query: str,
+        branch_name: str,
+        category: str | None,
+        limit: int,
+        time_range: dict | None,
+    ) -> list[dict]:
+        """BM25 search using MATCH AGAINST."""
         where_parts = [
             "MATCH(fact_text, category) AGAINST(:query IN NATURAL LANGUAGE MODE)",
             "branch_name = :branch",
@@ -209,6 +268,70 @@ class SearchEngine:
             self._fact_to_result(f, fts_scores.get(f.id, 0) / max(max_score, 1e-6))
             for f in facts
         ]
+
+    async def _like_search(
+        self,
+        query: str,
+        branch_name: str,
+        category: str | None,
+        limit: int,
+        time_range: dict | None,
+    ) -> list[dict]:
+        """Fallback keyword search using LIKE."""
+        # Split query into words and create LIKE conditions
+        words = [w for w in query.strip().split() if w]
+        if not words:
+            return await self._recent_facts(branch_name, category, limit)
+
+        where_parts = ["branch_name = :branch", "status = 'active'"]
+        params: dict = {"branch": branch_name, "limit": limit}
+
+        # Add LIKE condition for each word - matches any word in fact_text
+        like_conditions = " OR ".join(
+            [f"fact_text LIKE :word{i}" for i in range(len(words))]
+        )
+        where_parts.append(f"({like_conditions})")
+        for i, word in enumerate(words):
+            params[f"word{i}"] = f"%{word}%"
+
+        if category:
+            where_parts.append("category = :category")
+            params["category"] = category
+        if time_range:
+            if time_range.get("after"):
+                where_parts.append("created_at >= :after")
+                params["after"] = time_range["after"]
+            if time_range.get("before"):
+                where_parts.append("created_at <= :before")
+                params["before"] = time_range["before"]
+
+        where_sql = " AND ".join(where_parts)
+
+        # Use ORM query for LIKE search (simpler than raw SQL)
+        stmt = (
+            select(Fact)
+            .where(text(where_sql))
+            .order_by(Fact.created_at.desc())
+            .limit(limit)
+        )
+        result = await self._session.execute(stmt, params)
+        facts = result.scalars().all()
+
+        # Score based on word matches (more matches = higher score)
+        results = []
+        for f in facts:
+            score = 0.0
+            fact_lower = f.fact_text.lower()
+            for word in words:
+                if word.lower() in fact_lower:
+                    score += 1.0
+            # Normalize by number of words
+            score = score / len(words)
+            results.append(self._fact_to_result(f, score))
+
+        # Sort by score descending
+        results.sort(key=lambda x: x["score"], reverse=True)
+        return results[:limit]
 
     async def _vector_search(
         self,
@@ -292,10 +415,31 @@ class SearchEngine:
         session_id: str | None = None,
         limit: int = 10,
     ) -> list[dict]:
-        """Search observations via MO MATCH AGAINST."""
+        """Search observations via MO MATCH AGAINST with LIKE fallback."""
         if not query.strip():
             return []
 
+        # Try MATCH AGAINST first, fall back to LIKE on error
+        try:
+            return await self._match_against_search_observations(
+                query, branch_name, session_id, limit
+            )
+        except OperationalError as e:
+            if "MATCH" in str(e) or "not supported" in str(e):
+                logger.debug("MATCH AGAINST not supported for observations, falling back to LIKE")
+                return await self._like_search_observations(
+                    query, branch_name, session_id, limit
+                )
+            raise
+
+    async def _match_against_search_observations(
+        self,
+        query: str,
+        branch_name: str,
+        session_id: str | None,
+        limit: int,
+    ) -> list[dict]:
+        """Search observations via MATCH AGAINST."""
         where_parts = [
             "MATCH(summary, tool_name) AGAINST(:query IN NATURAL LANGUAGE MODE)",
             "branch_name = :branch",
@@ -319,6 +463,57 @@ class SearchEngine:
         fts_ids = [row[0] for row in fts_rows]
         stmt = select(Observation).where(Observation.id.in_(fts_ids))
         result = await self._session.execute(stmt)
+        observations = result.scalars().all()
+
+        return [
+            {
+                "id": o.id,
+                "type": "observation",
+                "observation_type": o.observation_type,
+                "tool_name": o.tool_name,
+                "summary": o.summary,
+                "session_id": o.session_id,
+                "created_at": o.created_at.isoformat() if o.created_at else None,
+            }
+            for o in observations
+        ]
+
+    async def _like_search_observations(
+        self,
+        query: str,
+        branch_name: str,
+        session_id: str | None,
+        limit: int,
+    ) -> list[dict]:
+        """Search observations via LIKE (fallback)."""
+        words = [w for w in query.strip().split() if w]
+        if not words:
+            return []
+
+        where_parts = ["branch_name = :branch"]
+        params: dict = {"branch": branch_name, "limit": limit}
+
+        # Add LIKE condition for each word
+        like_conditions = " OR ".join(
+            [f"summary LIKE :word{i}" for i in range(len(words))]
+        )
+        where_parts.append(f"({like_conditions})")
+        for i, word in enumerate(words):
+            params[f"word{i}"] = f"%{word}%"
+
+        if session_id:
+            where_parts.append("session_id = :session_id")
+            params["session_id"] = session_id
+
+        where_sql = " AND ".join(where_parts)
+
+        stmt = (
+            select(Observation)
+            .where(text(where_sql))
+            .order_by(Observation.created_at.desc())
+            .limit(limit)
+        )
+        result = await self._session.execute(stmt, params)
         observations = result.scalars().all()
 
         return [

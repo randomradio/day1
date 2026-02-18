@@ -72,6 +72,7 @@ class FactEngine:
         self._session.add(fact)
         # MO FULLTEXT INDEX auto-indexes — no manual FTS insert needed
         await self._session.commit()
+        await self._session.refresh(fact)
         return fact
 
     async def get_fact(self, fact_id: str) -> Fact:

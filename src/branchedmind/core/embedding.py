@@ -59,6 +59,56 @@ class OpenAIEmbedding(EmbeddingProvider):
             raise EmbeddingError(f"OpenAI batch embedding failed: {e}") from e
 
 
+class DoubaoEmbedding(EmbeddingProvider):
+    """Doubao (Volces/ByteDance) embedding provider.
+
+    Uses the OpenAI-compatible API with custom base URL.
+    For text embeddings, uses plain string input (not multimodal format).
+    """
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        model: str | None = None,
+    ) -> None:
+        try:
+            from openai import AsyncOpenAI
+        except ImportError as e:
+            raise EmbeddingError("openai package not installed") from e
+
+        self._client = AsyncOpenAI(
+            api_key=api_key or getattr(settings, "doubao_api_key", ""),
+            base_url=base_url or getattr(settings, "doubao_base_url", "https://ark.cn-beijing.volces.com/api/v3"),
+        )
+        self._model = model or getattr(settings, "doubao_embedding_model", "doubao-embedding")
+        self._dims = settings.embedding_dimensions
+
+    async def embed(self, text: str) -> list[float]:
+        try:
+            # For text-only, use plain string (not multimodal format)
+            resp = await self._client.embeddings.create(
+                input=text,
+                model=self._model,
+                encoding_format="float",
+            )
+            return resp.data[0].embedding
+        except openai.APIError as e:
+            raise EmbeddingError(f"Doubao embedding failed: {e}") from e
+
+    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        try:
+            # Batch uses plain strings
+            resp = await self._client.embeddings.create(
+                input=texts,
+                model=self._model,
+                encoding_format="float",
+            )
+            return [d.embedding for d in resp.data]
+        except openai.APIError as e:
+            raise EmbeddingError(f"Doubao batch embedding failed: {e}") from e
+
+
 class MockEmbedding(EmbeddingProvider):
     """Deterministic mock embedding for testing (hash-based)."""
 
@@ -81,8 +131,12 @@ class MockEmbedding(EmbeddingProvider):
 
 def get_embedding_provider() -> EmbeddingProvider:
     """Factory: return configured embedding provider."""
-    if settings.embedding_provider == "openai" and settings.openai_api_key:
+    provider = settings.embedding_provider.lower()
+
+    if provider == "openai" and settings.openai_api_key:
         return OpenAIEmbedding()
+    elif provider == "doubao":
+        return DoubaoEmbedding()
     return MockEmbedding()
 
 

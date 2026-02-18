@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import logging
 import re
+from contextlib import asynccontextmanager
 from datetime import datetime
 
 from sqlalchemy import select, text, update
 from sqlalchemy.exc import OperationalError
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from branchedmind.core.exceptions import BranchExistsError, BranchNotFoundError
-from branchedmind.db.engine import get_autocommit_conn
 from branchedmind.db.models import BranchRegistry
 
 logger = logging.getLogger(__name__)
@@ -37,6 +37,17 @@ class BranchManager:
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+
+    @asynccontextmanager
+    async def _get_autocommit_conn(self) -> AsyncConnection:
+        """Get an autocommit connection from the session's engine.
+
+        Using the session's engine avoids event loop conflicts in tests
+        where the global engine might be tied to a different event loop.
+        """
+        async with self._session.bind.connect() as raw_conn:
+            conn = await raw_conn.execution_options(isolation_level="AUTOCOMMIT")
+            yield conn
 
     async def ensure_main_branch(self) -> None:
         """Ensure the 'main' branch exists in the registry."""
@@ -91,11 +102,12 @@ class BranchManager:
         if parent.scalar_one_or_none() is None:
             raise BranchNotFoundError(f"Parent branch '{parent_branch}' not found")
 
-        # Flush pending ORM work before switching to autocommit
+        # Flush and commit ORM work before DATA BRANCH operations
         await self._session.flush()
 
         # MO native: zero-copy branch per table (requires autocommit)
-        async with get_autocommit_conn() as ac:
+        # Use session's connection to avoid event loop conflicts
+        async with self._get_autocommit_conn() as ac:
             for table in BRANCH_TABLES:
                 parent_tbl = _branch_table(table, parent_branch)
                 branch_tbl = _branch_table(table, branch_name)
@@ -112,6 +124,7 @@ class BranchManager:
         )
         self._session.add(registry)
         await self._session.commit()
+        await self._session.refresh(registry)
         return registry
 
     async def list_branches(self, status: str | None = None) -> list[BranchRegistry]:
@@ -157,7 +170,7 @@ class BranchManager:
             last_err: Exception | None = None
             for attempt in range(2):
                 try:
-                    async with get_autocommit_conn() as ac:
+                    async with self._get_autocommit_conn() as ac:
                         result = await ac.execute(
                             text(f"DATA BRANCH DIFF `{src}` AGAINST `{tgt}`")
                         )
@@ -194,7 +207,7 @@ class BranchManager:
             src = _branch_table(table, source_branch)
             tgt = _branch_table(table, target_branch)
             try:
-                async with get_autocommit_conn() as ac:
+                async with self._get_autocommit_conn() as ac:
                     result = await ac.execute(
                         text(f"DATA BRANCH DIFF `{src}` AGAINST `{tgt}` OUTPUT COUNT")
                     )
@@ -205,7 +218,7 @@ class BranchManager:
                 logger.debug(
                     "OUTPUT COUNT failed for %s, falling back to row count", table
                 )
-                async with get_autocommit_conn() as ac:
+                async with self._get_autocommit_conn() as ac:
                     result = await ac.execute(
                         text(f"DATA BRANCH DIFF `{src}` AGAINST `{tgt}`")
                     )
@@ -235,7 +248,7 @@ class BranchManager:
         if conflict in ("skip", "accept"):
             conflict_clause = f" WHEN CONFLICT {conflict.upper()}"
 
-        async with get_autocommit_conn() as ac:
+        async with self._get_autocommit_conn() as ac:
             for table in BRANCH_TABLES:
                 src = _branch_table(table, source_branch)
                 tgt = _branch_table(table, target_branch)
@@ -270,7 +283,7 @@ class BranchManager:
             raise BranchExistsError("Cannot archive the main branch")
 
         # Drop branch-specific tables (autocommit for DDL)
-        async with get_autocommit_conn() as ac:
+        async with self._get_autocommit_conn() as ac:
             for table in BRANCH_TABLES:
                 tbl = _branch_table(table, branch_name)
                 await ac.execute(text(f"DROP TABLE IF EXISTS `{tbl}`"))

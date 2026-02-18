@@ -28,9 +28,15 @@ import asyncio
 import os
 import sys
 import time
+from pathlib import Path
 
+from dotenv import load_dotenv
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
+
+# Load .env from project root
+_project_root = Path(__file__).resolve().parents[1]
+load_dotenv(_project_root / ".env")
 
 
 async def main() -> None:
