@@ -16,13 +16,13 @@ def generate_hooks_config() -> dict:
         Dict to merge into .claude/settings.json
 
     Note: Uses new format with matcher + hooks array.
-    Empty matcher {} means hook runs for all events.
+    Matcher "*" means hook runs for all events.
     """
     return {
         "hooks": {
             "SessionStart": [
                 {
-                    "matcher": {},
+                    "matcher": "*",
                     "hooks": [
                         {
                             "type": "command",
@@ -33,7 +33,7 @@ def generate_hooks_config() -> dict:
             ],
             "UserPromptSubmit": [
                 {
-                    "matcher": {},
+                    "matcher": "*",
                     "hooks": [
                         {
                             "type": "command",
@@ -44,7 +44,7 @@ def generate_hooks_config() -> dict:
             ],
             "PreToolUse": [
                 {
-                    "matcher": {},
+                    "matcher": "*",
                     "hooks": [
                         {
                             "type": "command",
@@ -55,7 +55,7 @@ def generate_hooks_config() -> dict:
             ],
             "PostToolUse": [
                 {
-                    "matcher": {},
+                    "matcher": "*",
                     "hooks": [
                         {
                             "type": "command",
@@ -66,7 +66,7 @@ def generate_hooks_config() -> dict:
             ],
             "Stop": [
                 {
-                    "matcher": {},
+                    "matcher": "*",
                     "hooks": [
                         {
                             "type": "command",
@@ -77,7 +77,7 @@ def generate_hooks_config() -> dict:
             ],
             "PreCompact": [
                 {
-                    "matcher": {},
+                    "matcher": "*",
                     "hooks": [
                         {
                             "type": "command",
@@ -88,7 +88,7 @@ def generate_hooks_config() -> dict:
             ],
             "SessionEnd": [
                 {
-                    "matcher": {},
+                    "matcher": "*",
                     "hooks": [
                         {
                             "type": "command",
