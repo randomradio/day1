@@ -225,7 +225,10 @@ class ConsolidationEngine:
             consolidation_type="task_checkpoint",
             source_branch=task.branch_name,
             target_branch=task.parent_branch,
-            summary=f"Identified {len(durable_facts)} durable, {ephemeral_count} ephemeral facts",
+            summary=(
+                f"Identified {len(durable_facts)} durable,"
+                f" {ephemeral_count} ephemeral facts"
+            ),
         )
         self._session.add(history)
         await self._session.commit()

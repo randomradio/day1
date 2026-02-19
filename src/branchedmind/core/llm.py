@@ -35,7 +35,11 @@ class DoubaoClient:
 
         self._api_key = api_key or settings.doubao_api_key
         self._base_url = base_url or settings.doubao_base_url
-        self._model = model or getattr(settings, "doubao_llm_model", "doubao-seed-1-6-251015")
+        self._model = model or getattr(
+            settings,
+            "doubao_llm_model",
+            "doubao-seed-1-6-251015",
+        )
 
         if not self._api_key:
             raise ValueError("Doubao API key not configured (BM_DOUBAO_API_KEY)")
@@ -76,7 +80,11 @@ class DoubaoClient:
     def process_document(
         self,
         file_path: str | Path,
-        prompt: str = "Provide the document's text content by paragraph and output it in JSON format, including the paragraph type (type) and text content (content).",
+        prompt: str = (
+            "Provide the document's text content by paragraph"
+            " and output it in JSON format, including the"
+            " paragraph type (type) and text content (content)."
+        ),
     ) -> Any:
         """Upload and process a document with Doubao.
 
@@ -216,7 +224,11 @@ class LLMClient:
         messages.append(
             {
                 "role": "user",
-                "content": f"{prompt}\n\nRespond with valid JSON matching this schema:\n{json.dumps(schema)}",
+                "content": (
+                    f"{prompt}\n\nRespond with valid JSON"
+                    f" matching this schema:\n"
+                    f"{json.dumps(schema)}"
+                ),
             }
         )
 

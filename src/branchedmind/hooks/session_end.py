@@ -54,13 +54,12 @@ async def handler(input_data: dict) -> dict:
         )
 
     # Trigger session-level consolidation if in a task context
-    consolidation_result = None
     if task_id:
         try:
             consolidator = ConsolidationEngine(session)
             sess_record = await session_mgr.get_session(sid)
             branch = sess_record.branch_name if sess_record else "main"
-            consolidation_result = await consolidator.consolidate_session(
+            await consolidator.consolidate_session(
                 session_id=sid,
                 branch_name=branch,
                 task_id=task_id,

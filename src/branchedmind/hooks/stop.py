@@ -52,9 +52,9 @@ def _summarize_response(response: str) -> str:
     For MVP: take first meaningful paragraph.
     Production would use LLM for intelligent summarization.
     """
-    lines = [l.strip() for l in response.split("\n") if l.strip()]
+    lines = [line.strip() for line in response.split("\n") if line.strip()]
     # Skip very short lines (headers, bullets, etc.)
-    content_lines = [l for l in lines if len(l) > 30]
+    content_lines = [line for line in lines if len(line) > 30]
     if content_lines:
         return content_lines[0][:500]
     return ""

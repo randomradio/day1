@@ -25,8 +25,7 @@ TOOL_DEFINITIONS: list[Tool] = [
     Tool(
         name="memory_write_fact",
         description=(
-            "Store a structured fact in memory."
-            " Facts are the core knowledge units."
+            "Store a structured fact in memory." " Facts are the core knowledge units."
         ),
         inputSchema={
             "type": "object",
@@ -66,8 +65,7 @@ TOOL_DEFINITIONS: list[Tool] = [
                 "observation_type": {
                     "type": "string",
                     "description": (
-                        "Type: tool_use, discovery,"
-                        " decision, error, insight"
+                        "Type: tool_use, discovery," " decision, error, insight"
                     ),
                 },
                 "summary": {
@@ -109,8 +107,7 @@ TOOL_DEFINITIONS: list[Tool] = [
                 "relation_type": {
                     "type": "string",
                     "description": (
-                        "Relation type: depends_on,"
-                        " causes, fixes, implements, etc."
+                        "Relation type: depends_on," " causes, fixes, implements, etc."
                     ),
                 },
                 "properties": {
@@ -168,8 +165,7 @@ TOOL_DEFINITIONS: list[Tool] = [
     Tool(
         name="memory_graph_query",
         description=(
-            "Query the entity relationship graph."
-            " Find all connections to an entity."
+            "Query the entity relationship graph." " Find all connections to an entity."
         ),
         inputSchema={
             "type": "object",
@@ -214,7 +210,10 @@ TOOL_DEFINITIONS: list[Tool] = [
     # === Branch Operations ===
     Tool(
         name="memory_branch_create",
-        description="Create a new memory branch (fork from parent). Isolated workspace for experiments or agents.",
+        description=(
+            "Create a new memory branch (fork from parent)."
+            " Isolated workspace for experiments or agents."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
@@ -250,7 +249,10 @@ TOOL_DEFINITIONS: list[Tool] = [
     ),
     Tool(
         name="memory_branch_switch",
-        description="Switch the active branch. All subsequent operations will use this branch.",
+        description=(
+            "Switch the active branch. All subsequent"
+            " operations will use this branch."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
@@ -264,7 +266,9 @@ TOOL_DEFINITIONS: list[Tool] = [
     ),
     Tool(
         name="memory_branch_diff",
-        description="Compare two branches. Shows new facts, relations, and conflicts.",
+        description=(
+            "Compare two branches." " Shows new facts, relations, and conflicts."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
@@ -283,7 +287,10 @@ TOOL_DEFINITIONS: list[Tool] = [
     ),
     Tool(
         name="memory_branch_merge",
-        description="Merge one branch into another. Supports auto, cherry_pick, and squash strategies.",
+        description=(
+            "Merge one branch into another."
+            " Supports auto, cherry_pick, and squash strategies."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
@@ -303,7 +310,9 @@ TOOL_DEFINITIONS: list[Tool] = [
                 "items": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "For cherry_pick: specific fact/observation IDs to merge",
+                    "description": (
+                        "For cherry_pick: specific" " fact/observation IDs to merge"
+                    ),
                 },
             },
             "required": ["source_branch", "strategy"],
@@ -336,7 +345,10 @@ TOOL_DEFINITIONS: list[Tool] = [
     ),
     Tool(
         name="memory_time_travel",
-        description="Query memory as it was at a specific point in time. Read-only, doesn't modify data.",
+        description=(
+            "Query memory as it was at a specific point"
+            " in time. Read-only, doesn't modify data."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
@@ -356,7 +368,10 @@ TOOL_DEFINITIONS: list[Tool] = [
     # === Task Management ===
     Tool(
         name="memory_task_create",
-        description="Create a long-running task. Creates a task branch and optionally defines objectives.",
+        description=(
+            "Create a long-running task. Creates a task"
+            " branch and optionally defines objectives."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
@@ -370,12 +385,18 @@ TOOL_DEFINITIONS: list[Tool] = [
                 },
                 "task_type": {
                     "type": "string",
-                    "description": "Type: bug_fix, pr_review, feature, research, refactor, incident",
+                    "description": (
+                        "Type: bug_fix, pr_review, feature,"
+                        " research, refactor, incident"
+                    ),
                 },
                 "tags": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Cross-cutting labels for discovery (e.g. ['auth', 'security'])",
+                    "description": (
+                        "Cross-cutting labels for discovery"
+                        " (e.g. ['auth', 'security'])"
+                    ),
                 },
                 "objectives": {
                     "type": "array",
@@ -395,7 +416,10 @@ TOOL_DEFINITIONS: list[Tool] = [
     ),
     Tool(
         name="memory_task_join",
-        description="Join an agent to a task. Creates an isolated agent branch and returns full task context.",
+        description=(
+            "Join an agent to a task. Creates an isolated"
+            " agent branch and returns full task context."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
@@ -419,7 +443,10 @@ TOOL_DEFINITIONS: list[Tool] = [
     ),
     Tool(
         name="memory_task_status",
-        description="Get comprehensive task status: objectives, agents, progress, and recent activity.",
+        description=(
+            "Get comprehensive task status: objectives,"
+            " agents, progress, and recent activity."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
@@ -430,7 +457,10 @@ TOOL_DEFINITIONS: list[Tool] = [
     ),
     Tool(
         name="memory_task_update",
-        description="Update a task's objectives or status. Mark objectives as done/blocked/active.",
+        description=(
+            "Update a task's objectives or status."
+            " Mark objectives as done/blocked/active."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
@@ -462,7 +492,10 @@ TOOL_DEFINITIONS: list[Tool] = [
     # === Consolidation ===
     Tool(
         name="memory_consolidate",
-        description="Consolidate memory: distill observations into facts, deduplicate, and merge to parent scope.",
+        description=(
+            "Consolidate memory: distill observations into"
+            " facts, deduplicate, and merge to parent scope."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
@@ -491,7 +524,11 @@ TOOL_DEFINITIONS: list[Tool] = [
     # === Replay & Cross-Branch Search ===
     Tool(
         name="memory_search_task",
-        description="Search across a task's memory including all agent branches. Returns results with source attribution.",
+        description=(
+            "Search across a task's memory including all"
+            " agent branches. Returns results with"
+            " source attribution."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
@@ -527,7 +564,11 @@ TOOL_DEFINITIONS: list[Tool] = [
     ),
     Tool(
         name="memory_replay_task_type",
-        description="Aggregate analysis of all tasks of a given type. Shows patterns, success rates, key findings.",
+        description=(
+            "Aggregate analysis of all tasks of a given"
+            " type. Shows patterns, success rates,"
+            " key findings."
+        ),
         inputSchema={
             "type": "object",
             "properties": {

@@ -79,9 +79,18 @@ class DoubaoEmbedding(EmbeddingProvider):
 
         self._client = AsyncOpenAI(
             api_key=api_key or getattr(settings, "doubao_api_key", ""),
-            base_url=base_url or getattr(settings, "doubao_base_url", "https://ark.cn-beijing.volces.com/api/v3"),
+            base_url=base_url
+            or getattr(
+                settings,
+                "doubao_base_url",
+                "https://ark.cn-beijing.volces.com/api/v3",
+            ),
         )
-        self._model = model or getattr(settings, "doubao_embedding_model", "doubao-embedding")
+        self._model = model or getattr(
+            settings,
+            "doubao_embedding_model",
+            "doubao-embedding",
+        )
         self._dims = settings.embedding_dimensions
 
     async def embed(self, text: str) -> list[float]:

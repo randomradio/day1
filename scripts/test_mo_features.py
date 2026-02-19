@@ -193,7 +193,9 @@ async def main() -> None:
             r = await conn.execute(
                 text(
                     "SELECT id FROM `bm_test_ft` "
-                    "WHERE MATCH(content, tag) AGAINST('machine learning' IN NATURAL LANGUAGE MODE)"
+                    "WHERE MATCH(content, tag) AGAINST("
+                    "'machine learning'"
+                    " IN NATURAL LANGUAGE MODE)"
                 )
             )
             rows = r.fetchall()
@@ -276,7 +278,10 @@ async def main() -> None:
             try:
                 r = await conn.execute(
                     text(
-                        "DATA BRANCH DIFF `bm_test_branch` AGAINST `bm_test_main` OUTPUT COUNT"
+                        "DATA BRANCH DIFF"
+                        " `bm_test_branch`"
+                        " AGAINST `bm_test_main`"
+                        " OUTPUT COUNT"
                     )
                 )
                 row = r.fetchone()
@@ -317,7 +322,9 @@ async def main() -> None:
             )
             await conn.execute(
                 text(
-                    "DATA BRANCH MERGE `bm_test_branch2` INTO `bm_test_main` WHEN CONFLICT SKIP"
+                    "DATA BRANCH MERGE `bm_test_branch2`"
+                    " INTO `bm_test_main`"
+                    " WHEN CONFLICT SKIP"
                 )
             )
             r = await conn.execute(text("SELECT COUNT(*) FROM `bm_test_main`"))
@@ -333,7 +340,9 @@ async def main() -> None:
         try:
             await conn.execute(
                 text(
-                    "DATA BRANCH MERGE `bm_test_branch` INTO `bm_test_main` WHEN CONFLICT ACCEPT"
+                    "DATA BRANCH MERGE `bm_test_branch`"
+                    " INTO `bm_test_main`"
+                    " WHEN CONFLICT ACCEPT"
                 )
             )
             r = await conn.execute(text("SELECT COUNT(*) FROM `bm_test_main`"))
@@ -379,7 +388,9 @@ async def main() -> None:
         async def test_json():
             await conn.execute(
                 text(
-                    "UPDATE `bm_test_main` SET metadata = '{\"key\": \"value\"}' WHERE id = 't1'"
+                    "UPDATE `bm_test_main`"
+                    ' SET metadata = \'{"key": "value"}\''
+                    " WHERE id = 't1'"
                 )
             )
             r = await conn.execute(

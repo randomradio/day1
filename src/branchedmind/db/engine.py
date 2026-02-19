@@ -49,8 +49,10 @@ async def init_db() -> None:
 
         # Create FULLTEXT indexes (MO auto-indexes, replaces FTS5 virtual tables)
         fulltext_stmts = [
-            "CREATE FULLTEXT INDEX IF NOT EXISTS ft_facts ON facts(fact_text, category)",
-            "CREATE FULLTEXT INDEX IF NOT EXISTS ft_obs ON observations(summary, tool_name)",
+            "CREATE FULLTEXT INDEX IF NOT EXISTS"
+            " ft_facts ON facts(fact_text, category)",
+            "CREATE FULLTEXT INDEX IF NOT EXISTS"
+            " ft_obs ON observations(summary, tool_name)",
         ]
         for stmt in fulltext_stmts:
             try:

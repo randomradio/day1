@@ -121,9 +121,12 @@ class SearchEngine:
             # MO FULLTEXT search (branch-agnostic)
             fts_result = await self._session.execute(
                 text(
-                    "SELECT id, MATCH(fact_text, category) AGAINST(:query IN NATURAL LANGUAGE MODE) AS score "
-                    "FROM facts WHERE MATCH(fact_text, category) AGAINST(:query IN NATURAL LANGUAGE MODE) "
-                    "ORDER BY score DESC LIMIT :limit"
+                    "SELECT id, MATCH(fact_text, category)"
+                    " AGAINST(:query IN NATURAL LANGUAGE MODE)"
+                    " AS score FROM facts"
+                    " WHERE MATCH(fact_text, category)"
+                    " AGAINST(:query IN NATURAL LANGUAGE MODE)"
+                    " ORDER BY score DESC LIMIT :limit"
                 ),
                 {"query": query, "limit": limit * 3},
             )
@@ -135,7 +138,10 @@ class SearchEngine:
             fts_scores = {row[0]: float(row[1]) for row in fts_rows}
         except OperationalError as e:
             if "MATCH" in str(e) or "not supported" in str(e):
-                logger.debug("MATCH AGAINST not supported for cross-branch, falling back to LIKE")
+                logger.debug(
+                    "MATCH AGAINST not supported for"
+                    " cross-branch, falling back to LIKE"
+                )
                 # Fallback: use LIKE to get matching fact IDs
                 words = [w for w in query.strip().split() if w]
                 if not words:
@@ -159,7 +165,8 @@ class SearchEngine:
 
                 fts_ids = [row[0] for row in fts_rows]
                 # Score based on word count
-                fts_scores = {fid: 1.0 for fid in fts_ids}  # Uniform score for LIKE fallback
+                # Uniform score for LIKE fallback
+                fts_scores = {fid: 1.0 for fid in fts_ids}
             else:
                 raise
 
@@ -244,9 +251,12 @@ class SearchEngine:
 
         fts_result = await self._session.execute(
             text(
-                f"SELECT id, MATCH(fact_text, category) AGAINST(:query IN NATURAL LANGUAGE MODE) AS score "
-                f"FROM facts WHERE {where_sql} "
-                f"ORDER BY score DESC LIMIT :limit"
+                "SELECT id,"
+                " MATCH(fact_text, category)"
+                " AGAINST(:query IN NATURAL LANGUAGE MODE)"
+                " AS score"
+                f" FROM facts WHERE {where_sql}"
+                " ORDER BY score DESC LIMIT :limit"
             ),
             params,
         )
@@ -426,7 +436,10 @@ class SearchEngine:
             )
         except OperationalError as e:
             if "MATCH" in str(e) or "not supported" in str(e):
-                logger.debug("MATCH AGAINST not supported for observations, falling back to LIKE")
+                logger.debug(
+                    "MATCH AGAINST not supported for"
+                    " observations, falling back to LIKE"
+                )
                 return await self._like_search_observations(
                     query, branch_name, session_id, limit
                 )
