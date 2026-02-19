@@ -18,6 +18,7 @@ from branchedmind.core.message_engine import MessageEngine
 from branchedmind.core.observation_engine import ObservationEngine
 from branchedmind.core.relation_engine import RelationEngine
 from branchedmind.core.replay_engine import ReplayConfig, ReplayEngine
+from branchedmind.core.scoring_engine import ScoringEngine
 from branchedmind.core.search_engine import SearchEngine
 from branchedmind.core.semantic_diff import SemanticDiffEngine
 from branchedmind.core.session_manager import SessionManager
@@ -951,6 +952,57 @@ TOOL_DEFINITIONS: list[Tool] = [
             },
         },
     ),
+    # === Scoring ===
+    Tool(
+        name="score_conversation",
+        description=(
+            "Score a conversation on one or more dimensions using heuristic"
+            " scorers. Dimensions: token_efficiency, error_rate, tool_success,"
+            " conciseness. Scores are stored and can be aggregated later."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "conversation_id": {
+                    "type": "string",
+                    "description": "Conversation to score",
+                },
+                "dimensions": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Which dimensions to score (default: all heuristic)"
+                    ),
+                },
+                "scorer": {
+                    "type": "string",
+                    "description": "Scorer to use (default: heuristic)",
+                },
+            },
+            "required": ["conversation_id"],
+        },
+    ),
+    Tool(
+        name="score_summary",
+        description=(
+            "Get aggregate score summary for a conversation or message."
+            " Returns avg, min, max per dimension."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "target_type": {
+                    "type": "string",
+                    "description": "'conversation' or 'message'",
+                },
+                "target_id": {
+                    "type": "string",
+                    "description": "ID of the target",
+                },
+            },
+            "required": ["target_type", "target_id"],
+        },
+    ),
 ]
 
 
@@ -1410,6 +1462,24 @@ async def handle_tool_call(
             branch_name=arguments.get("branch"),
             days=arguments.get("days", 30),
             granularity=arguments.get("granularity", "day"),
+        )
+
+    # === Scoring ===
+    elif name == "score_conversation":
+        engine = ScoringEngine(session)
+        return {
+            "scores": await engine.score_conversation(
+                conversation_id=arguments["conversation_id"],
+                dimensions=arguments.get("dimensions"),
+                scorer_name=arguments.get("scorer", "heuristic"),
+            )
+        }
+
+    elif name == "score_summary":
+        engine = ScoringEngine(session)
+        return await engine.get_score_summary(
+            target_type=arguments["target_type"],
+            target_id=arguments["target_id"],
         )
 
     else:

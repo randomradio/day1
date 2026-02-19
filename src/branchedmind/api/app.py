@@ -15,6 +15,7 @@ from branchedmind.api.routes import (
     observations,
     relations,
     replays,
+    scores,
     search,
     sessions,
     snapshots,
@@ -58,6 +59,7 @@ app.include_router(sessions.router, prefix="/api/v1", tags=["sessions"])
 app.include_router(snapshots.router, prefix="/api/v1", tags=["snapshots"])
 app.include_router(replays.router, prefix="/api/v1", tags=["replays"])
 app.include_router(analytics.router, prefix="/api/v1", tags=["analytics"])
+app.include_router(scores.router, prefix="/api/v1", tags=["scores"])
 
 
 @app.get("/health")

@@ -357,3 +357,34 @@ class ConsolidationHistory(Base):
     observations_processed: Mapped[int] = mapped_column(Integer, default=0)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+# === Scoring ===
+
+
+class Score(Base):
+    """A score applied to a message, conversation, or replay."""
+
+    __tablename__ = "scores"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    target_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    target_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    scorer: Mapped[str] = mapped_column(String(100), nullable=False)
+    dimension: Mapped[str] = mapped_column(String(100), nullable=False)
+    value: Mapped[float] = mapped_column(Float, nullable=False)
+    explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[dict | None] = mapped_column(
+        "metadata", JsonText, nullable=True
+    )
+    branch_name: Mapped[str] = mapped_column(String(100), default="main")
+    session_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        Index("idx_score_target", "target_type", "target_id"),
+        Index("idx_score_scorer", "scorer"),
+        Index("idx_score_dimension", "dimension"),
+        Index("idx_score_branch", "branch_name"),
+        Index("idx_score_created", "created_at"),
+    )

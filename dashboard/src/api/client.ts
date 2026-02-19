@@ -1,4 +1,5 @@
 import type {
+  AnalyticsOverview,
   BranchListResponse,
   Conversation,
   ConversationDiff,
@@ -9,8 +10,14 @@ import type {
   Message,
   MessageListResponse,
   MessageSearchResult,
+  ReplayListResponse,
+  ReplayResult,
+  ScoreEntry,
+  ScoreSummary,
   SearchResult,
+  SemanticDiff,
   Snapshot,
+  TrendData,
 } from '../types/schema';
 
 const API = '/api/v1';
@@ -172,4 +179,90 @@ export const api = {
     fetchJSON<{ results: MessageSearchResult[]; count: number }>(
       `${API}/messages/search?query=${encodeURIComponent(query)}&branch=${branch}${conversationId ? `&conversation_id=${conversationId}` : ''}`
     ),
+
+  // Semantic Diff
+  semanticDiff: (a: string, b: string) =>
+    fetchJSON<SemanticDiff>(`${API}/conversations/${a}/semantic-diff/${b}`),
+
+  // Replays
+  startReplay: (conversationId: string, data: {
+    from_message_id: string;
+    system_prompt?: string;
+    model?: string;
+    temperature?: number;
+    max_tokens?: number;
+    tool_filter?: string[];
+    extra_context?: string;
+    branch?: string;
+    title?: string;
+  }) =>
+    fetchJSON<ReplayResult>(`${API}/conversations/${conversationId}/replay`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  getReplayContext: (replayId: string) =>
+    fetchJSON<{ conversation_id: string; messages: Array<{ role: string; content: string }>; model?: string }>(
+      `${API}/replays/${replayId}/context`
+    ),
+
+  replayDiff: (replayId: string) =>
+    fetchJSON<ConversationDiff>(`${API}/replays/${replayId}/diff`),
+
+  replaySemanticDiff: (replayId: string) =>
+    fetchJSON<SemanticDiff>(`${API}/replays/${replayId}/semantic-diff`),
+
+  completeReplay: (replayId: string) =>
+    fetchJSON(`${API}/replays/${replayId}/complete`, { method: 'POST' }),
+
+  listReplays: (conversationId?: string, limit = 20) => {
+    const qs = new URLSearchParams();
+    if (conversationId) qs.set('conversation_id', conversationId);
+    qs.set('limit', String(limit));
+    return fetchJSON<ReplayListResponse>(`${API}/replays?${qs}`);
+  },
+
+  // Analytics
+  analyticsOverview: (branch?: string, days = 30) => {
+    const qs = new URLSearchParams();
+    if (branch) qs.set('branch', branch);
+    qs.set('days', String(days));
+    return fetchJSON<AnalyticsOverview>(`${API}/analytics/overview?${qs}`);
+  },
+
+  analyticsSession: (sessionId: string) =>
+    fetchJSON<Record<string, unknown>>(`${API}/analytics/sessions/${sessionId}`),
+
+  analyticsAgent: (agentId: string, days = 30) =>
+    fetchJSON<Record<string, unknown>>(`${API}/analytics/agents/${agentId}?days=${days}`),
+
+  analyticsTrends: (days = 30, granularity = 'day', branch?: string) => {
+    const qs = new URLSearchParams({ days: String(days), granularity });
+    if (branch) qs.set('branch', branch);
+    return fetchJSON<TrendData>(`${API}/analytics/trends?${qs}`);
+  },
+
+  analyticsConversation: (conversationId: string) =>
+    fetchJSON<Record<string, unknown>>(`${API}/analytics/conversations/${conversationId}`),
+
+  // Scores
+  evaluateConversation: (conversationId: string, dimensions?: string[], scorer = 'heuristic') =>
+    fetchJSON<{ scores: ScoreEntry[] }>(`${API}/conversations/${conversationId}/evaluate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dimensions, scorer }),
+    }),
+
+  listScores: (params?: { target_type?: string; target_id?: string; dimension?: string; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.target_type) qs.set('target_type', params.target_type);
+    if (params?.target_id) qs.set('target_id', params.target_id);
+    if (params?.dimension) qs.set('dimension', params.dimension);
+    if (params?.limit) qs.set('limit', String(params.limit));
+    return fetchJSON<{ scores: ScoreEntry[] }>(`${API}/scores?${qs}`);
+  },
+
+  scoreSummary: (targetType: string, targetId: string) =>
+    fetchJSON<ScoreSummary>(`${API}/scores/summary/${targetType}/${targetId}`),
 };
