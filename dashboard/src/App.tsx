@@ -26,7 +26,7 @@ export default function App() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <h1 className="text-xl font-bold text-white">
-              BranchedMind
+              Day1
             </h1>
             {/* Tab nav */}
             <nav className="flex gap-1">
