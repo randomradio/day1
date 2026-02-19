@@ -14,49 +14,87 @@ def generate_hooks_config() -> dict:
 
     Returns:
         Dict to merge into .claude/settings.json
+
+    Note: Uses new format with matcher + hooks array.
+    Empty matcher {} means hook runs for all events.
     """
     return {
         "hooks": {
             "SessionStart": [
                 {
-                    "type": "command",
-                    "command": "python -m branchedmind.hooks.session_start",
+                    "matcher": {},
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": "python -m branchedmind.hooks.session_start",
+                        }
+                    ],
                 }
             ],
             "UserPromptSubmit": [
                 {
-                    "type": "command",
-                    "command": "python -m branchedmind.hooks.user_prompt",
+                    "matcher": {},
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": "python -m branchedmind.hooks.user_prompt",
+                        }
+                    ],
                 }
             ],
             "PreToolUse": [
                 {
-                    "type": "command",
-                    "command": "python -m branchedmind.hooks.pre_tool_use",
+                    "matcher": {},
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": "python -m branchedmind.hooks.pre_tool_use",
+                        }
+                    ],
                 }
             ],
             "PostToolUse": [
                 {
-                    "type": "command",
-                    "command": "python -m branchedmind.hooks.post_tool_use",
+                    "matcher": {},
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": "python -m branchedmind.hooks.post_tool_use",
+                        }
+                    ],
                 }
             ],
             "Stop": [
                 {
-                    "type": "command",
-                    "command": "python -m branchedmind.hooks.assistant_response",
+                    "matcher": {},
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": "python -m branchedmind.hooks.assistant_response",
+                        }
+                    ],
                 }
             ],
             "PreCompact": [
                 {
-                    "type": "command",
-                    "command": "python -m branchedmind.hooks.pre_compact",
+                    "matcher": {},
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": "python -m branchedmind.hooks.pre_compact",
+                        }
+                    ],
                 }
             ],
             "SessionEnd": [
                 {
-                    "type": "command",
-                    "command": "python -m branchedmind.hooks.session_end",
+                    "matcher": {},
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": "python -m branchedmind.hooks.session_end",
+                        }
+                    ],
                 }
             ],
         }
