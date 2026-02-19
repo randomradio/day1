@@ -40,14 +40,17 @@ async def handler() -> dict:
     task_id = os.environ.get("BM_TASK_ID")
     agent_id = os.environ.get("BM_AGENT_ID")
 
-    # Register this session
+    # Register this session (link to parent if BM_PARENT_SESSION is set)
     sid = get_session_id()
+    parent_session = os.environ.get("BM_PARENT_SESSION")
+
     existing = await session_mgr.get_session(sid)
     if existing is None:
         await session_mgr.create_session(
             session_id=sid,
             branch_name="main",
             project_path=get_project_path(),
+            parent_session=parent_session,
             task_id=task_id,
             agent_id=agent_id,
         )
@@ -63,6 +66,50 @@ async def handler() -> dict:
         )
 
     context_parts: list[str] = []
+
+    # Parent session context handoff
+    if parent_session:
+        try:
+            parent_ctx = await session_mgr.get_session_context(
+                parent_session, message_limit=30, fact_limit=15
+            )
+            if "error" not in parent_ctx:
+                context_parts.append("## Continuing from Previous Session")
+                ps = parent_ctx["session"]
+                if ps.get("summary"):
+                    context_parts.append(f"**Summary**: {ps['summary'][:500]}")
+
+                # Include recent conversation messages
+                for conv in parent_ctx.get("conversations", [])[:2]:
+                    title = conv.get("title") or "Untitled"
+                    context_parts.append(
+                        f"\n### Conversation: {title} "
+                        f"({conv.get('message_count', 0)} messages)"
+                    )
+                    for msg in conv.get("messages", [])[-15:]:
+                        role = msg["role"].upper()
+                        content = (msg.get("content") or "")[:300]
+                        if content:
+                            context_parts.append(f"- **{role}**: {content}")
+
+                # Include facts from parent session
+                parent_facts = parent_ctx.get("facts", [])
+                if parent_facts:
+                    context_parts.append("\n### Key Facts from Previous Session")
+                    for pf in parent_facts[:10]:
+                        cat = f"[{pf.get('category', '')}]" if pf.get("category") else ""
+                        context_parts.append(f"- {pf['fact_text'][:200]} {cat}")
+
+                # Observation summary
+                obs_sum = parent_ctx.get("observations_summary", {})
+                if obs_sum.get("total"):
+                    tools = ", ".join(obs_sum.get("tools_used", [])[:10])
+                    context_parts.append(
+                        f"\n**Previous session**: {obs_sum['total']} observations, "
+                        f"tools used: {tools}"
+                    )
+        except (DatabaseError,):
+            pass  # Graceful degradation
 
     # Task-aware context injection
     if task_id:

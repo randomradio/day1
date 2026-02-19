@@ -23,10 +23,28 @@ def generate_hooks_config() -> dict:
                     "command": "python -m branchedmind.hooks.session_start",
                 }
             ],
+            "UserPromptSubmit": [
+                {
+                    "type": "command",
+                    "command": "python -m branchedmind.hooks.user_prompt",
+                }
+            ],
+            "PreToolUse": [
+                {
+                    "type": "command",
+                    "command": "python -m branchedmind.hooks.pre_tool_use",
+                }
+            ],
             "PostToolUse": [
                 {
                     "type": "command",
                     "command": "python -m branchedmind.hooks.post_tool_use",
+                }
+            ],
+            "Stop": [
+                {
+                    "type": "command",
+                    "command": "python -m branchedmind.hooks.assistant_response",
                 }
             ],
             "PreCompact": [
@@ -35,10 +53,10 @@ def generate_hooks_config() -> dict:
                     "command": "python -m branchedmind.hooks.pre_compact",
                 }
             ],
-            "Stop": [
+            "SessionEnd": [
                 {
                     "type": "command",
-                    "command": "python -m branchedmind.hooks.stop",
+                    "command": "python -m branchedmind.hooks.session_end",
                 }
             ],
         }

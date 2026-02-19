@@ -17,6 +17,7 @@ from branchedmind.core.message_engine import MessageEngine
 from branchedmind.core.observation_engine import ObservationEngine
 from branchedmind.core.relation_engine import RelationEngine
 from branchedmind.core.search_engine import SearchEngine
+from branchedmind.core.session_manager import SessionManager
 from branchedmind.core.snapshot_manager import SnapshotManager
 from branchedmind.core.task_engine import TaskEngine
 
@@ -715,6 +716,34 @@ TOOL_DEFINITIONS: list[Tool] = [
             "required": ["conversation_id", "message_id"],
         },
     ),
+    # === Session Context Handoff ===
+    Tool(
+        name="memory_session_context",
+        description=(
+            "Get full context from a previous session for"
+            " handoff. Returns session metadata, conversations"
+            " with messages, facts, and observation summary."
+            " Use this when continuing work from a prior session."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "session_id": {
+                    "type": "string",
+                    "description": "Session ID to retrieve context from",
+                },
+                "message_limit": {
+                    "type": "integer",
+                    "description": "Max messages per conversation (default: 50)",
+                },
+                "fact_limit": {
+                    "type": "integer",
+                    "description": "Max facts to include (default: 20)",
+                },
+            },
+            "required": ["session_id"],
+        },
+    ),
 ]
 
 
@@ -1096,6 +1125,15 @@ async def handle_tool_call(
             "message_count": forked.message_count,
             "status": forked.status,
         }
+
+    # === Session Context Handoff ===
+    elif name == "memory_session_context":
+        mgr = SessionManager(session)
+        return await mgr.get_session_context(
+            session_id=arguments["session_id"],
+            message_limit=arguments.get("message_limit", 50),
+            fact_limit=arguments.get("fact_limit", 20),
+        )
 
     else:
         return {"error": f"Unknown tool: {name}"}

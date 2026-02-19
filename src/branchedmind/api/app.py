@@ -14,6 +14,7 @@ from branchedmind.api.routes import (
     observations,
     relations,
     search,
+    sessions,
     snapshots,
     tasks,
 )
@@ -51,6 +52,7 @@ app.include_router(facts.router, prefix="/api/v1", tags=["facts"])
 app.include_router(observations.router, prefix="/api/v1", tags=["observations"])
 app.include_router(relations.router, prefix="/api/v1", tags=["relations"])
 app.include_router(branches.router, prefix="/api/v1", tags=["branches"])
+app.include_router(sessions.router, prefix="/api/v1", tags=["sessions"])
 app.include_router(snapshots.router, prefix="/api/v1", tags=["snapshots"])
 
 
