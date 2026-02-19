@@ -8,7 +8,9 @@ from fastapi import FastAPI
 
 from branchedmind.api.routes import (
     branches,
+    conversations,
     facts,
+    messages,
     observations,
     relations,
     search,
@@ -40,8 +42,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Search routes must come before parameterized routes to avoid conflicts
+# Search and message-search routes must come before parameterized routes
 app.include_router(search.router, prefix="/api/v1", tags=["search"])
+app.include_router(messages.router, prefix="/api/v1", tags=["messages"])
+app.include_router(conversations.router, prefix="/api/v1", tags=["conversations"])
 app.include_router(tasks.router, prefix="/api/v1", tags=["tasks"])
 app.include_router(facts.router, prefix="/api/v1", tags=["facts"])
 app.include_router(observations.router, prefix="/api/v1", tags=["observations"])

@@ -10,6 +10,7 @@ import asyncio
 import os
 
 from branchedmind.core.branch_manager import BranchManager
+from branchedmind.core.conversation_engine import ConversationEngine
 from branchedmind.core.embedding import get_embedding_provider
 from branchedmind.core.exceptions import DatabaseError, TaskNotFoundError
 from branchedmind.core.fact_engine import FactEngine
@@ -49,6 +50,16 @@ async def handler() -> dict:
             project_path=get_project_path(),
             task_id=task_id,
             agent_id=agent_id,
+        )
+
+    # Create a conversation for this session (Layer 1: History)
+    conv_engine = ConversationEngine(session)
+    existing_conv = await conv_engine.get_conversation_by_session(sid)
+    if existing_conv is None:
+        await conv_engine.create_conversation(
+            session_id=sid,
+            agent_id=agent_id,
+            task_id=task_id,
         )
 
     context_parts: list[str] = []

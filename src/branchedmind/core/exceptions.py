@@ -43,3 +43,11 @@ class TaskAgentError(BranchedMindError):
 
 class ConsolidationError(BranchedMindError):
     """Memory consolidation failed."""
+
+
+class ConversationNotFoundError(BranchedMindError):
+    """Requested conversation does not exist."""
+
+
+class MessageNotFoundError(BranchedMindError):
+    """Requested message does not exist."""

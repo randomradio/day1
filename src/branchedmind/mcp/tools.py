@@ -9,9 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from branchedmind.core.branch_manager import BranchManager
 from branchedmind.core.consolidation_engine import ConsolidationEngine
+from branchedmind.core.conversation_engine import ConversationEngine
 from branchedmind.core.embedding import get_embedding_provider
 from branchedmind.core.fact_engine import FactEngine
 from branchedmind.core.merge_engine import MergeEngine
+from branchedmind.core.message_engine import MessageEngine
 from branchedmind.core.observation_engine import ObservationEngine
 from branchedmind.core.relation_engine import RelationEngine
 from branchedmind.core.search_engine import SearchEngine
@@ -581,6 +583,138 @@ TOOL_DEFINITIONS: list[Tool] = [
             "required": ["task_type"],
         },
     ),
+    # === Conversation & Message History ===
+    Tool(
+        name="memory_log_message",
+        description=(
+            "Log a message into the active conversation."
+            " Captures user, assistant, or tool messages."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "role": {
+                    "type": "string",
+                    "enum": ["user", "assistant", "system", "tool_call", "tool_result"],
+                    "description": "Message role",
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Message text content",
+                },
+                "thinking": {
+                    "type": "string",
+                    "description": "Reasoning trace (if available)",
+                },
+                "tool_calls": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": "Tool call data [{name, input, output}]",
+                },
+                "conversation_id": {
+                    "type": "string",
+                    "description": "Target conversation (auto-detected if not provided)",
+                },
+                "session_id": {
+                    "type": "string",
+                    "description": "Session ID",
+                },
+                "token_count": {
+                    "type": "integer",
+                    "description": "Token count for this message",
+                },
+                "model": {
+                    "type": "string",
+                    "description": "Model that produced this message",
+                },
+            },
+            "required": ["role", "content"],
+        },
+    ),
+    Tool(
+        name="memory_list_conversations",
+        description=(
+            "List conversations with optional filters."
+            " Shows chat history threads."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string", "description": "Filter by session"},
+                "agent_id": {"type": "string", "description": "Filter by agent"},
+                "task_id": {"type": "string", "description": "Filter by task"},
+                "status": {
+                    "type": "string",
+                    "enum": ["active", "completed", "forked"],
+                    "description": "Filter by status",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results (default: 20)",
+                },
+            },
+        },
+    ),
+    Tool(
+        name="memory_search_messages",
+        description=(
+            "Semantic + keyword search across all conversation"
+            " messages. Find what any agent discussed."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search query",
+                },
+                "conversation_id": {
+                    "type": "string",
+                    "description": "Limit to a specific conversation",
+                },
+                "role": {
+                    "type": "string",
+                    "description": "Filter by message role",
+                },
+                "branch": {"type": "string", "description": "Branch to search"},
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results (default: 10)",
+                },
+            },
+            "required": ["query"],
+        },
+    ),
+    Tool(
+        name="memory_fork_conversation",
+        description=(
+            "Fork a conversation from a specific message."
+            " Creates a new conversation that shares"
+            " history up to the fork point."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "conversation_id": {
+                    "type": "string",
+                    "description": "Conversation to fork from",
+                },
+                "message_id": {
+                    "type": "string",
+                    "description": "Message ID to fork at (inclusive)",
+                },
+                "branch": {
+                    "type": "string",
+                    "description": "Optional new branch for the fork",
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Title for the forked conversation",
+                },
+            },
+            "required": ["conversation_id", "message_id"],
+        },
+    ),
 ]
 
 
@@ -884,6 +1018,84 @@ async def handle_tool_call(
             task_type=arguments["task_type"],
             limit=arguments.get("limit", 20),
         )
+
+    # === Conversation & Message History ===
+    elif name == "memory_log_message":
+        conv_engine = ConversationEngine(session)
+        msg_engine = MessageEngine(session, embedder)
+
+        conv_id = arguments.get("conversation_id")
+        if not conv_id:
+            # Auto-detect: find active conversation for session
+            sid = arguments.get("session_id", "unknown")
+            conv = await conv_engine.get_conversation_by_session(sid)
+            if conv is None:
+                conv = await conv_engine.create_conversation(session_id=sid)
+            conv_id = conv.id
+
+        msg = await msg_engine.write_message(
+            conversation_id=conv_id,
+            role=arguments["role"],
+            content=arguments.get("content"),
+            thinking=arguments.get("thinking"),
+            tool_calls=arguments.get("tool_calls"),
+            token_count=arguments.get("token_count", 0),
+            model=arguments.get("model"),
+            session_id=arguments.get("session_id"),
+            branch_name=branch,
+        )
+        return {"id": msg.id, "conversation_id": conv_id, "sequence_num": msg.sequence_num}
+
+    elif name == "memory_list_conversations":
+        engine = ConversationEngine(session)
+        convs = await engine.list_conversations(
+            session_id=arguments.get("session_id"),
+            agent_id=arguments.get("agent_id"),
+            task_id=arguments.get("task_id"),
+            status=arguments.get("status"),
+            limit=arguments.get("limit", 20),
+        )
+        return {
+            "conversations": [
+                {
+                    "id": c.id,
+                    "session_id": c.session_id,
+                    "title": c.title,
+                    "status": c.status,
+                    "message_count": c.message_count,
+                    "total_tokens": c.total_tokens,
+                    "branch_name": c.branch_name,
+                    "created_at": c.created_at.isoformat() if c.created_at else None,
+                }
+                for c in convs
+            ]
+        }
+
+    elif name == "memory_search_messages":
+        msg_engine = MessageEngine(session, embedder)
+        results = await msg_engine.search_messages(
+            query=arguments["query"],
+            branch_name=arguments.get("branch", branch),
+            conversation_id=arguments.get("conversation_id"),
+            role=arguments.get("role"),
+            limit=arguments.get("limit", 10),
+        )
+        return {"results": results, "count": len(results)}
+
+    elif name == "memory_fork_conversation":
+        conv_engine = ConversationEngine(session)
+        forked = await conv_engine.fork_conversation(
+            conversation_id=arguments["conversation_id"],
+            fork_at_message_id=arguments["message_id"],
+            branch_name=arguments.get("branch"),
+            title=arguments.get("title"),
+        )
+        return {
+            "conversation_id": forked.id,
+            "parent_conversation_id": forked.parent_conversation_id,
+            "message_count": forked.message_count,
+            "status": forked.status,
+        }
 
     else:
         return {"error": f"Unknown tool: {name}"}

@@ -10,7 +10,9 @@ from __future__ import annotations
 import asyncio
 import os
 
+from branchedmind.core.conversation_engine import ConversationEngine
 from branchedmind.core.embedding import get_embedding_provider
+from branchedmind.core.message_engine import MessageEngine
 from branchedmind.core.observation_engine import ObservationEngine
 from branchedmind.hooks.base import (
     get_db_session,
@@ -40,8 +42,10 @@ async def handler(input_data: dict) -> dict:
     # Compress observation: extract key information
     summary = _compress_observation(tool_name, tool_input, tool_response)
 
+    sid = get_session_id()
+
     await obs_engine.write_observation(
-        session_id=get_session_id(),
+        session_id=sid,
         observation_type="tool_use",
         tool_name=tool_name,
         summary=summary,
@@ -50,6 +54,26 @@ async def handler(input_data: dict) -> dict:
         task_id=task_id,
         agent_id=agent_id,
     )
+
+    # Also store as a tool_result message in conversation history (Layer 1)
+    conv_engine = ConversationEngine(session)
+    conv = await conv_engine.get_conversation_by_session(sid)
+    if conv is not None:
+        msg_engine = MessageEngine(session, embedder)
+        await msg_engine.write_message(
+            conversation_id=conv.id,
+            role="tool_result",
+            content=summary,
+            tool_calls=[{
+                "name": tool_name,
+                "input": str(tool_input)[:2000],
+                "output": str(tool_response)[:2000],
+            }],
+            session_id=sid,
+            agent_id=agent_id,
+            branch_name=conv.branch_name,
+            embed=False,  # Tool results don't need embeddings
+        )
 
     await session.close()
     return {"async": True, "asyncTimeout": 10000}

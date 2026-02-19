@@ -53,6 +53,8 @@ async def init_db() -> None:
             " ft_facts ON facts(fact_text, category)",
             "CREATE FULLTEXT INDEX IF NOT EXISTS"
             " ft_obs ON observations(summary, tool_name)",
+            "CREATE FULLTEXT INDEX IF NOT EXISTS"
+            " ft_messages ON messages(content, role)",
         ]
         for stmt in fulltext_stmts:
             try:

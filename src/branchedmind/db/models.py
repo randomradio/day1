@@ -266,6 +266,79 @@ class TaskAgent(Base):
     )
 
 
+# === Conversation & Message History Layer ===
+
+
+class Conversation(Base):
+    """A conversation thread — the unit of chat history."""
+
+    __tablename__ = "conversations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    session_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    agent_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    task_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    branch_name: Mapped[str] = mapped_column(String(100), default="main")
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    parent_conversation_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    fork_point_message_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    message_count: Mapped[int] = mapped_column(Integer, default=0)
+    total_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    model: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    metadata_json: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        Index("idx_conv_session", "session_id"),
+        Index("idx_conv_agent", "agent_id"),
+        Index("idx_conv_task", "task_id"),
+        Index("idx_conv_branch", "branch_name"),
+        Index("idx_conv_status", "status"),
+        Index("idx_conv_created", "created_at"),
+    )
+
+
+class Message(Base):
+    """A single message in a conversation — branchable via DATA BRANCH."""
+
+    __tablename__ = "messages"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    conversation_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    session_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    agent_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    thinking: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tool_calls_json: Mapped[dict | None] = mapped_column(
+        "tool_calls", JsonText, nullable=True
+    )
+    token_count: Mapped[int] = mapped_column(Integer, default=0)
+    model: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    parent_message_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    sequence_num: Mapped[int] = mapped_column(Integer, default=0)
+    embedding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    branch_name: Mapped[str] = mapped_column(String(100), default="main")
+    metadata_json: Mapped[dict | None] = mapped_column(
+        "metadata", JsonText, nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        Index("idx_msg_conversation", "conversation_id"),
+        Index("idx_msg_session", "session_id"),
+        Index("idx_msg_agent", "agent_id"),
+        Index("idx_msg_role", "role"),
+        Index("idx_msg_branch", "branch_name"),
+        Index("idx_msg_sequence", "conversation_id", "sequence_num"),
+        Index("idx_msg_created", "created_at"),
+    )
+
+
 class ConsolidationHistory(Base):
     """Audit trail for memory consolidation events."""
 
