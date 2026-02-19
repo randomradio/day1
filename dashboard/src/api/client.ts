@@ -247,11 +247,11 @@ export const api = {
     fetchJSON<Record<string, unknown>>(`${API}/analytics/conversations/${conversationId}`),
 
   // Scores
-  evaluateConversation: (conversationId: string, dimensions?: string[], scorer = 'heuristic') =>
+  evaluateConversation: (conversationId: string, dimensions?: string[]) =>
     fetchJSON<{ scores: ScoreEntry[] }>(`${API}/conversations/${conversationId}/evaluate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dimensions, scorer }),
+      body: JSON.stringify({ dimensions }),
     }),
 
   listScores: (params?: { target_type?: string; target_id?: string; dimension?: string; limit?: number }) => {

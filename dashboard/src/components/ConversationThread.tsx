@@ -46,7 +46,7 @@ export default function ConversationThread() {
           disabled={loading}
           className="bg-purple-700 text-white text-xs px-3 py-1 rounded hover:bg-purple-600 disabled:opacity-50"
         >
-          Score
+          Evaluate
         </button>
       </div>
 

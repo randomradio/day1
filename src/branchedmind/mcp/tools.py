@@ -956,27 +956,25 @@ TOOL_DEFINITIONS: list[Tool] = [
     Tool(
         name="score_conversation",
         description=(
-            "Score a conversation on one or more dimensions using heuristic"
-            " scorers. Dimensions: token_efficiency, error_rate, tool_success,"
-            " conciseness. Scores are stored and can be aggregated later."
+            "Evaluate a conversation using LLM-as-judge. Default dimensions:"
+            " helpfulness, correctness, coherence, efficiency. You can also"
+            " pass custom dimensions like safety, instruction_following,"
+            " creativity, completeness. Scores are stored and aggregated."
         ),
         inputSchema={
             "type": "object",
             "properties": {
                 "conversation_id": {
                     "type": "string",
-                    "description": "Conversation to score",
+                    "description": "Conversation to evaluate",
                 },
                 "dimensions": {
                     "type": "array",
                     "items": {"type": "string"},
                     "description": (
-                        "Which dimensions to score (default: all heuristic)"
+                        "Dimensions to evaluate (default: helpfulness,"
+                        " correctness, coherence, efficiency)"
                     ),
-                },
-                "scorer": {
-                    "type": "string",
-                    "description": "Scorer to use (default: heuristic)",
                 },
             },
             "required": ["conversation_id"],
@@ -1471,7 +1469,6 @@ async def handle_tool_call(
             "scores": await engine.score_conversation(
                 conversation_id=arguments["conversation_id"],
                 dimensions=arguments.get("dimensions"),
-                scorer_name=arguments.get("scorer", "heuristic"),
             )
         }
 

@@ -27,7 +27,6 @@ class ScoreCreate(BaseModel):
 
 class EvaluateRequest(BaseModel):
     dimensions: list[str] | None = None
-    scorer: str = "heuristic"
 
 
 @router.post("/scores")
@@ -77,13 +76,12 @@ async def evaluate_conversation(
     body: EvaluateRequest,
     session: AsyncSession = Depends(get_session),
 ):
-    """Run scoring on a conversation."""
+    """Evaluate a conversation using LLM-as-judge."""
     engine = ScoringEngine(session)
     try:
         scores = await engine.score_conversation(
             conversation_id=conversation_id,
             dimensions=body.dimensions,
-            scorer_name=body.scorer,
         )
     except ConversationNotFoundError:
         raise HTTPException(status_code=404, detail="Conversation not found")

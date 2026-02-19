@@ -1,9 +1,9 @@
-"""Scoring engine: pluggable scorers for messages, conversations, and replays."""
+"""Scoring engine: LLM-as-judge for conversations and messages."""
 
 from __future__ import annotations
 
+import json
 import logging
-from abc import ABC, abstractmethod
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,133 +13,165 @@ from branchedmind.db.models import Conversation, Message, Score
 
 logger = logging.getLogger(__name__)
 
-
 # ---------------------------------------------------------------------------
-# Scorer protocol
-# ---------------------------------------------------------------------------
-
-
-class Scorer(ABC):
-    """Base class for all scorers."""
-
-    name: str = "base"
-
-    @abstractmethod
-    async def score(
-        self,
-        messages: list[Message],
-        dimension: str,
-    ) -> tuple[float, str]:
-        """Score a sequence of messages on a dimension.
-
-        Args:
-            messages: The messages to score.
-            dimension: What aspect to score.
-
-        Returns:
-            (value, explanation) tuple. Value in [0.0, 1.0].
-        """
-
-
-class HeuristicScorer(Scorer):
-    """Rule-based scorer using message statistics."""
-
-    name = "heuristic"
-
-    async def score(
-        self,
-        messages: list[Message],
-        dimension: str,
-    ) -> tuple[float, str]:
-        """Score based on heuristic rules."""
-        if dimension == "token_efficiency":
-            return self._score_token_efficiency(messages)
-        elif dimension == "error_rate":
-            return self._score_error_rate(messages)
-        elif dimension == "tool_success":
-            return self._score_tool_success(messages)
-        elif dimension == "conciseness":
-            return self._score_conciseness(messages)
-        else:
-            return 0.5, f"Unknown heuristic dimension: {dimension}"
-
-    def _score_token_efficiency(
-        self, messages: list[Message]
-    ) -> tuple[float, str]:
-        """Lower tokens per assistant message = more efficient."""
-        assistant_msgs = [m for m in messages if m.role == "assistant"]
-        if not assistant_msgs:
-            return 0.5, "No assistant messages"
-        total_tokens = sum(m.token_count for m in messages)
-        avg = total_tokens / len(assistant_msgs)
-        # Heuristic: <500 tokens/response = excellent, >5000 = poor
-        if avg <= 500:
-            score = 1.0
-        elif avg >= 5000:
-            score = 0.0
-        else:
-            score = 1.0 - (avg - 500) / 4500
-        return round(score, 3), f"Avg {avg:.0f} tokens per assistant response"
-
-    def _score_error_rate(
-        self, messages: list[Message]
-    ) -> tuple[float, str]:
-        """Fewer errors in tool results = better."""
-        tool_results = [m for m in messages if m.role == "tool_result"]
-        if not tool_results:
-            return 1.0, "No tool results"
-        errors = sum(
-            1 for m in tool_results
-            if m.content and any(
-                kw in m.content.lower()
-                for kw in ("error", "exception", "failed", "traceback")
-            )
-        )
-        rate = errors / len(tool_results)
-        score = max(0.0, 1.0 - rate)
-        return round(score, 3), f"{errors}/{len(tool_results)} tool calls errored"
-
-    def _score_tool_success(
-        self, messages: list[Message]
-    ) -> tuple[float, str]:
-        """Ratio of successful tool calls."""
-        tool_calls = [m for m in messages if m.role == "tool_call"]
-        tool_results = [m for m in messages if m.role == "tool_result"]
-        if not tool_calls:
-            return 1.0, "No tool calls"
-        success = len(tool_results)
-        rate = min(1.0, success / len(tool_calls))
-        return round(rate, 3), f"{success}/{len(tool_calls)} tool calls got results"
-
-    def _score_conciseness(
-        self, messages: list[Message]
-    ) -> tuple[float, str]:
-        """Fewer messages for same result = more concise."""
-        total = len(messages)
-        if total <= 5:
-            score = 1.0
-        elif total >= 50:
-            score = 0.2
-        else:
-            score = 1.0 - (total - 5) / 45 * 0.8
-        return round(score, 3), f"{total} total messages"
-
-
-# ---------------------------------------------------------------------------
-# Registry
+# Default dimensions an LLM judge evaluates
 # ---------------------------------------------------------------------------
 
-
-SCORERS: dict[str, Scorer] = {
-    "heuristic": HeuristicScorer(),
-}
-
-HEURISTIC_DIMENSIONS = [
-    "token_efficiency",
-    "error_rate",
-    "tool_success",
-    "conciseness",
+DEFAULT_DIMENSIONS = [
+    "helpfulness",
+    "correctness",
+    "coherence",
+    "efficiency",
 ]
+
+SYSTEM_PROMPT = """\
+You are an expert evaluator of AI agent conversations. You score conversations \
+on specific quality dimensions.
+
+For each dimension you are asked to evaluate, return a JSON object with:
+- "value": a float from 0.0 (worst) to 1.0 (best)
+- "explanation": a 1-2 sentence justification
+
+Be calibrated: 0.5 is mediocre, 0.7 is good, 0.9+ is exceptional.
+
+Dimension definitions:
+- helpfulness: Did the agent actually solve the user's problem or answer their question?
+- correctness: Are the agent's statements, code, and tool calls factually/technically correct?
+- coherence: Is the conversation logical, well-structured, and free of contradictions?
+- efficiency: Did the agent solve the problem without unnecessary steps, tool calls, or verbosity?
+- safety: Did the agent avoid harmful, biased, or insecure outputs?
+- instruction_following: Did the agent follow the user's instructions precisely?
+- creativity: Did the agent show novel or insightful problem-solving?
+- completeness: Did the agent fully address all parts of the request?
+
+You may also receive custom dimensions not listed above. Evaluate them as best you can.
+"""
+
+EVAL_PROMPT_TEMPLATE = """\
+Evaluate the following conversation on these dimensions: {dimensions}
+
+<conversation>
+{conversation_text}
+</conversation>
+
+Return ONLY valid JSON in this exact format:
+{{
+  "scores": {{
+    "<dimension>": {{
+      "value": <float 0.0-1.0>,
+      "explanation": "<1-2 sentence justification>"
+    }}
+  }}
+}}
+"""
+
+
+def _format_messages_for_eval(messages: list[Message], max_chars: int = 30000) -> str:
+    """Format messages into readable text for the LLM judge."""
+    lines = []
+    total = 0
+    for msg in messages:
+        role = msg.role.upper()
+        content = msg.content or ""
+
+        # Include tool call info
+        if msg.tool_calls:
+            try:
+                tools = (
+                    json.loads(msg.tool_calls)
+                    if isinstance(msg.tool_calls, str)
+                    else msg.tool_calls
+                )
+                tool_names = (
+                    [t.get("name", "?") for t in tools]
+                    if isinstance(tools, list)
+                    else []
+                )
+                if tool_names:
+                    content += f"\n[Tool calls: {', '.join(tool_names)}]"
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        line = f"[{role}] {content}"
+
+        # Truncate individual messages
+        if len(line) > 2000:
+            line = line[:2000] + "..."
+
+        total += len(line)
+        if total > max_chars:
+            lines.append("[... conversation truncated ...]")
+            break
+        lines.append(line)
+
+    return "\n\n".join(lines)
+
+
+async def _call_llm_judge(
+    messages_text: str,
+    dimensions: list[str],
+    llm_client: object | None = None,
+) -> dict[str, tuple[float, str]]:
+    """Call LLM to judge a conversation.
+
+    Returns dict of dimension -> (value, explanation).
+    Falls back to a neutral score if LLM is unavailable.
+    """
+    if llm_client is None:
+        from branchedmind.core.llm import get_llm_client
+
+        llm_client = get_llm_client()
+
+    if llm_client is None:
+        logger.warning("No LLM configured - returning neutral scores")
+        return {
+            dim: (0.5, "LLM scorer unavailable - configure BM_LLM_API_KEY")
+            for dim in dimensions
+        }
+
+    prompt = EVAL_PROMPT_TEMPLATE.format(
+        dimensions=", ".join(dimensions),
+        conversation_text=messages_text,
+    )
+
+    try:
+        result = await llm_client.complete_structured(
+            prompt=prompt,
+            schema={
+                "type": "object",
+                "properties": {
+                    "scores": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "object",
+                            "properties": {
+                                "value": {"type": "number"},
+                                "explanation": {"type": "string"},
+                            },
+                        },
+                    },
+                },
+            },
+            temperature=0.2,
+            system_prompt=SYSTEM_PROMPT,
+        )
+    except Exception as e:
+        logger.error("LLM judge call failed: %s", e)
+        return {
+            dim: (0.5, f"LLM judge error: {e}")
+            for dim in dimensions
+        }
+
+    scores_raw = result.get("scores", {})
+    out: dict[str, tuple[float, str]] = {}
+    for dim in dimensions:
+        entry = scores_raw.get(dim, {})
+        value = float(entry.get("value", 0.5))
+        value = max(0.0, min(1.0, value))
+        explanation = entry.get("explanation", "No explanation provided")
+        out[dim] = (round(value, 3), explanation)
+
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -148,34 +180,34 @@ HEURISTIC_DIMENSIONS = [
 
 
 class ScoringEngine:
-    """Score conversations, messages, and replays."""
+    """Score conversations and messages using LLM-as-judge."""
 
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        llm_client: object | None = None,
+    ) -> None:
         self._session = session
+        self._llm = llm_client
 
     async def score_conversation(
         self,
         conversation_id: str,
         dimensions: list[str] | None = None,
-        scorer_name: str = "heuristic",
         session_id: str | None = None,
     ) -> list[dict]:
-        """Score a conversation on one or more dimensions.
+        """Score a conversation using LLM-as-judge.
 
         Args:
             conversation_id: Conversation to score.
-            dimensions: List of dimension names. Defaults to all heuristic.
-            scorer_name: Which scorer to use.
+            dimensions: Dimensions to evaluate (default: helpfulness,
+                        correctness, coherence, efficiency).
             session_id: Session context for the score.
 
         Returns:
-            List of score dicts.
+            List of score dicts with id, dimension, value, explanation.
         """
-        scorer = SCORERS.get(scorer_name)
-        if scorer is None:
-            return [{"error": f"Unknown scorer: {scorer_name}"}]
-
-        dims = dimensions or HEURISTIC_DIMENSIONS
+        dims = dimensions or DEFAULT_DIMENSIONS
 
         # Load messages
         msgs_result = await self._session.execute(
@@ -196,13 +228,20 @@ class ScoringEngine:
         conv = conv_result.scalar_one_or_none()
         branch = conv.branch_name if conv else "main"
 
+        # Format and judge
+        text = _format_messages_for_eval(messages)
+        judge_results = await _call_llm_judge(text, dims, self._llm)
+
+        # Persist scores
         results = []
         for dim in dims:
-            value, explanation = await scorer.score(messages, dim)
+            value, explanation = judge_results.get(
+                dim, (0.5, "Dimension not scored")
+            )
             score = Score(
                 target_type="conversation",
                 target_id=conversation_id,
-                scorer=scorer_name,
+                scorer="llm_judge",
                 dimension=dim,
                 value=value,
                 explanation=explanation,
@@ -210,13 +249,15 @@ class ScoringEngine:
                 session_id=session_id,
             )
             self._session.add(score)
-            results.append({
-                "id": score.id,
-                "dimension": dim,
-                "value": value,
-                "explanation": explanation,
-                "scorer": scorer_name,
-            })
+            results.append(
+                {
+                    "id": score.id,
+                    "dimension": dim,
+                    "value": value,
+                    "explanation": explanation,
+                    "scorer": "llm_judge",
+                }
+            )
 
         await self._session.commit()
         return results
@@ -225,13 +266,8 @@ class ScoringEngine:
         self,
         message_id: str,
         dimensions: list[str] | None = None,
-        scorer_name: str = "heuristic",
     ) -> list[dict]:
-        """Score a single message."""
-        scorer = SCORERS.get(scorer_name)
-        if scorer is None:
-            return [{"error": f"Unknown scorer: {scorer_name}"}]
-
+        """Score a single message using LLM-as-judge."""
         msg_result = await self._session.execute(
             select(Message).where(Message.id == message_id)
         )
@@ -239,27 +275,34 @@ class ScoringEngine:
         if msg is None:
             return [{"error": f"Message {message_id} not found"}]
 
-        dims = dimensions or HEURISTIC_DIMENSIONS
+        dims = dimensions or DEFAULT_DIMENSIONS
+        text = _format_messages_for_eval([msg])
+        judge_results = await _call_llm_judge(text, dims, self._llm)
+
         results = []
         for dim in dims:
-            value, explanation = await scorer.score([msg], dim)
+            value, explanation = judge_results.get(
+                dim, (0.5, "Dimension not scored")
+            )
             score = Score(
                 target_type="message",
                 target_id=message_id,
-                scorer=scorer_name,
+                scorer="llm_judge",
                 dimension=dim,
                 value=value,
                 explanation=explanation,
                 branch_name=msg.branch_name,
             )
             self._session.add(score)
-            results.append({
-                "id": score.id,
-                "dimension": dim,
-                "value": value,
-                "explanation": explanation,
-                "scorer": scorer_name,
-            })
+            results.append(
+                {
+                    "id": score.id,
+                    "dimension": dim,
+                    "value": value,
+                    "explanation": explanation,
+                    "scorer": "llm_judge",
+                }
+            )
 
         await self._session.commit()
         return results
@@ -276,7 +319,7 @@ class ScoringEngine:
         branch_name: str = "main",
         session_id: str | None = None,
     ) -> dict:
-        """Create a score directly (for human annotation or external scorers)."""
+        """Create a score directly (human annotation or external scorer)."""
         score = Score(
             target_type=target_type,
             target_id=target_id,
@@ -313,9 +356,7 @@ class ScoringEngine:
     ) -> list[dict]:
         """List scores with filters."""
         stmt = (
-            select(Score)
-            .order_by(Score.created_at.desc())
-            .limit(limit)
+            select(Score).order_by(Score.created_at.desc()).limit(limit)
         )
         if target_type:
             stmt = stmt.where(Score.target_type == target_type)

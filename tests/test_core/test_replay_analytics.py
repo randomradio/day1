@@ -11,7 +11,7 @@ from branchedmind.core.embedding import MockEmbedding
 from branchedmind.core.exceptions import ConversationNotFoundError, ReplayError
 from branchedmind.core.message_engine import MessageEngine
 from branchedmind.core.replay_engine import ReplayConfig, ReplayEngine
-from branchedmind.core.scoring_engine import HeuristicScorer, ScoringEngine
+from branchedmind.core.scoring_engine import ScoringEngine, _call_llm_judge
 from branchedmind.core.semantic_diff import SemanticDiffEngine
 
 
@@ -376,37 +376,92 @@ class TestSemanticDiffEngine:
 # =====================================================================
 
 
+class MockLLMClient:
+    """Mock LLM client that returns predictable scores."""
+
+    def __init__(self, scores: dict | None = None):
+        self._scores = scores or {}
+
+    async def complete_structured(self, prompt, schema, temperature=0.2, system_prompt=None):
+        """Return mock structured response."""
+        # Parse requested dimensions from prompt
+        dims = []
+        for line in prompt.split("\n"):
+            if line.startswith("Evaluate the following conversation on these dimensions:"):
+                dims = [d.strip() for d in line.split(":")[1].split(",")]
+                break
+
+        scores = {}
+        for dim in dims:
+            if dim in self._scores:
+                scores[dim] = self._scores[dim]
+            else:
+                scores[dim] = {"value": 0.8, "explanation": f"Mock score for {dim}"}
+        return {"scores": scores}
+
+
 class TestScoringEngine:
     @pytest.mark.asyncio
-    async def test_score_conversation_heuristic(
+    async def test_score_conversation_llm_judge(
         self, db_session, mock_embedder
     ):
         conv_id, _ = await _create_conversation_with_messages(
             db_session, mock_embedder
         )
-        engine = ScoringEngine(db_session)
+        mock_llm = MockLLMClient()
+        engine = ScoringEngine(db_session, llm_client=mock_llm)
         scores = await engine.score_conversation(conv_id)
-        assert len(scores) == 4  # 4 heuristic dimensions
+        assert len(scores) == 4  # 4 default dimensions
         for s in scores:
             assert 0.0 <= s["value"] <= 1.0
             assert s["dimension"] in (
-                "token_efficiency", "error_rate",
-                "tool_success", "conciseness",
+                "helpfulness", "correctness",
+                "coherence", "efficiency",
             )
+            assert s["scorer"] == "llm_judge"
 
     @pytest.mark.asyncio
-    async def test_score_specific_dimensions(
+    async def test_score_custom_dimensions(
         self, db_session, mock_embedder
     ):
         conv_id, _ = await _create_conversation_with_messages(
             db_session, mock_embedder
         )
-        engine = ScoringEngine(db_session)
+        mock_llm = MockLLMClient(scores={
+            "safety": {"value": 0.95, "explanation": "No harmful content"},
+        })
+        engine = ScoringEngine(db_session, llm_client=mock_llm)
         scores = await engine.score_conversation(
-            conv_id, dimensions=["error_rate"]
+            conv_id, dimensions=["safety"]
         )
         assert len(scores) == 1
-        assert scores[0]["dimension"] == "error_rate"
+        assert scores[0]["dimension"] == "safety"
+        assert scores[0]["value"] == 0.95
+
+    @pytest.mark.asyncio
+    async def test_score_no_llm_fallback(
+        self, db_session, mock_embedder
+    ):
+        """When no LLM is configured, scores fall back to 0.5."""
+        conv_id, _ = await _create_conversation_with_messages(
+            db_session, mock_embedder
+        )
+        # Pass None explicitly to simulate no LLM
+        engine = ScoringEngine(db_session, llm_client=None)
+        # Patch get_llm_client to return None
+        import branchedmind.core.scoring_engine as se_mod
+        original = se_mod._call_llm_judge
+
+        async def _fallback_judge(text, dims, client=None):
+            return {d: (0.5, "LLM unavailable") for d in dims}
+
+        se_mod._call_llm_judge = _fallback_judge
+        try:
+            scores = await engine.score_conversation(conv_id)
+            for s in scores:
+                assert s["value"] == 0.5
+        finally:
+            se_mod._call_llm_judge = original
 
     @pytest.mark.asyncio
     async def test_create_manual_score(self, db_session):
@@ -427,7 +482,8 @@ class TestScoringEngine:
         conv_id, _ = await _create_conversation_with_messages(
             db_session, mock_embedder
         )
-        engine = ScoringEngine(db_session)
+        mock_llm = MockLLMClient()
+        engine = ScoringEngine(db_session, llm_client=mock_llm)
         await engine.score_conversation(conv_id)
         scores = await engine.list_scores(target_id=conv_id)
         assert len(scores) == 4
@@ -437,11 +493,12 @@ class TestScoringEngine:
         conv_id, _ = await _create_conversation_with_messages(
             db_session, mock_embedder
         )
-        engine = ScoringEngine(db_session)
+        mock_llm = MockLLMClient()
+        engine = ScoringEngine(db_session, llm_client=mock_llm)
         await engine.score_conversation(conv_id)
         summary = await engine.get_score_summary("conversation", conv_id)
         assert "dimensions" in summary
-        assert "error_rate" in summary["dimensions"]
+        assert "helpfulness" in summary["dimensions"]
 
     @pytest.mark.asyncio
     async def test_clamp_score_value(self, db_session):
@@ -457,35 +514,38 @@ class TestScoringEngine:
 
 
 # =====================================================================
-# HeuristicScorer unit tests
+# LLM Judge unit tests
 # =====================================================================
 
 
-class TestHeuristicScorer:
+class TestLLMJudge:
     @pytest.mark.asyncio
-    async def test_error_rate_no_errors(self):
-        scorer = HeuristicScorer()
-        from unittest.mock import MagicMock
-
-        msg = MagicMock()
-        msg.role = "tool_result"
-        msg.content = "Success: file found"
-        value, explanation = await scorer.score([msg], "error_rate")
-        assert value == 1.0
-
-    @pytest.mark.asyncio
-    async def test_error_rate_with_errors(self):
-        scorer = HeuristicScorer()
-        from unittest.mock import MagicMock
-
-        msg = MagicMock()
-        msg.role = "tool_result"
-        msg.content = "Error: file not found"
-        value, explanation = await scorer.score([msg], "error_rate")
-        assert value == 0.0
+    async def test_call_llm_judge_with_mock(self):
+        mock_llm = MockLLMClient(scores={
+            "helpfulness": {"value": 0.9, "explanation": "Very helpful"},
+        })
+        result = await _call_llm_judge(
+            "[USER] How do I sort a list?\n\n[ASSISTANT] Use sorted().",
+            ["helpfulness"],
+            llm_client=mock_llm,
+        )
+        assert "helpfulness" in result
+        assert result["helpfulness"][0] == 0.9
 
     @pytest.mark.asyncio
-    async def test_unknown_dimension(self):
-        scorer = HeuristicScorer()
-        value, explanation = await scorer.score([], "unknown_dim")
-        assert value == 0.5
+    async def test_call_llm_judge_clamps_values(self):
+        """LLM returning out-of-range values should be clamped."""
+        mock_llm = MockLLMClient(scores={
+            "test_dim": {"value": 1.5, "explanation": "Too high"},
+        })
+        result = await _call_llm_judge("test", ["test_dim"], llm_client=mock_llm)
+        assert result["test_dim"][0] == 1.0
+
+    @pytest.mark.asyncio
+    async def test_call_llm_judge_no_client(self):
+        """Without LLM client, returns neutral 0.5 scores."""
+        result = await _call_llm_judge(
+            "test", ["helpfulness"], llm_client=None
+        )
+        # _call_llm_judge tries get_llm_client() which returns None without config
+        assert result["helpfulness"][0] == 0.5
