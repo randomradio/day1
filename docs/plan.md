@@ -2,7 +2,7 @@
 
 **Vision**: A SaaS platform where every agent conversation is captured like git commits — branchable, searchable, forkable.
 
-**Status**: Phase 1-2 Complete, Phase 3 In Progress
+**Status**: Phase 1-2 Complete, Phase 3 In Progress, Phase 4 Planned
 
 ---
 
@@ -151,18 +151,165 @@ Agent B starts with BM_PARENT_SESSION=session-001
 
 ---
 
-## Phase 4: Dashboard — Conversation Browser (Planned)
+## Phase 4: Replay & Analytics Engine (Planned)
 
-Build a conversation replay UI in the React dashboard.
+**Why this phase**: Competitive research (Feb 2026) shows 12+ platforms doing
+tracing and eval (LangSmith, Braintrust, Arize Phoenix, Langfuse, OpenAI Evals,
+W&B Weave, Patronus, AgentOps, Logfire, etc.). **None of them support
+conversation branching/forking as a first-class evaluation primitive.** Day1
+already has fork + diff + branch on conversations. Replay & analytics turns
+that into the agent eval workbench nobody else has.
 
-| Feature | Description |
-|---------|-------------|
+### Competitive Gap
+
+```
+               Tracing   Eval   Replay   Branching
+LangSmith        ✓        ✓      ~         ✗
+Braintrust       ✓        ✓      ~         ✗
+Arize Phoenix    ✓        ✓      ~         ✗
+Langfuse         ✓        ✓      ~         ✗
+OpenAI Evals     ✓        ✓      ✗         ✗
+Patronus         ✓        ✓      ~         ✗
+Day1             ✓        →      →         ✓  ← unique
+```
+
+### 4a. Replay Engine (Backend)
+
+Re-execute a conversation from any fork point with different parameters.
+
+| Component | Description |
+|-----------|-------------|
+| `ReplayEngine` | Reconstruct conversation state at any message_id, optionally re-run from that point |
+| `ReplayConfig` | Specify what changes: model, system prompt, tool availability, temperature |
+| `ReplayResult` | Captures the new branch of messages produced by replay |
+| Automatic forking | Replay creates a fork at the replay point, new messages go to the forked conversation |
+| Diff on replay | Compare original vs replayed conversation (already have `diff_conversations`) |
+
+**New files:**
+- `src/branchedmind/core/replay_engine.py`
+
+**New API endpoints:**
+- `POST /api/v1/conversations/{id}/replay` — start replay from a message
+- `GET /api/v1/replays/{id}` — get replay status + result
+- `GET /api/v1/replays/{id}/diff` — diff original vs replay
+
+**New MCP tools:**
+- `replay_conversation(conversation_id, from_message_id, config)` — trigger replay
+- `replay_diff(replay_id)` — get the diff
+
+**How it works:**
+```
+Original conversation:
+  msg-1 (user) → msg-2 (assistant) → msg-3 (user) → msg-4 (assistant/bad)
+
+Replay from msg-3 with different system prompt:
+  → fork_conversation at msg-3
+  → inject new system prompt into forked conversation context
+  → call LLM with messages [msg-1..msg-3] + new system prompt
+  → store result as msg-4' in forked conversation
+  → diff msg-4 vs msg-4' to see what changed
+```
+
+### 4b. Scoring & Evaluation
+
+Score conversations and individual messages using multiple strategies.
+
+| Component | Description |
+|-----------|-------------|
+| `ScoringEngine` | Pluggable scoring: LLM-as-judge, heuristic, human annotation |
+| `Score` model | New DB table: score_id, target_type (message/conversation), target_id, scorer, dimension, value, explanation |
+| LLM-as-judge | Use Claude to score on dimensions: helpfulness, correctness, safety, tool_use_quality |
+| Heuristic scorers | Token efficiency, tool call count, error rate, latency |
+| Pairwise comparison | Score branch A vs branch B (leverages existing diff) |
+| Annotation API | Human-in-the-loop scoring via API + dashboard |
+
+**New files:**
+- `src/branchedmind/core/scoring_engine.py`
+- `src/branchedmind/db/models.py` — add `Score` model
+
+**New DB table:**
+```sql
+CREATE TABLE scores (
+    id          VARCHAR(36) PRIMARY KEY,
+    target_type ENUM('message', 'conversation', 'replay'),
+    target_id   VARCHAR(36) NOT NULL,
+    scorer      VARCHAR(100) NOT NULL,   -- 'llm_judge', 'heuristic', 'human'
+    dimension   VARCHAR(100) NOT NULL,   -- 'helpfulness', 'correctness', etc.
+    value       FLOAT NOT NULL,          -- 0.0 - 1.0
+    explanation TEXT,
+    metadata    TEXT,                     -- JsonText for scorer config
+    branch_name VARCHAR(255) DEFAULT 'main',
+    created_at  DATETIME DEFAULT NOW()
+);
+```
+
+**New API endpoints:**
+- `POST /api/v1/scores` — create a score
+- `GET /api/v1/scores` — list scores (filter by target, dimension, scorer)
+- `POST /api/v1/conversations/{id}/evaluate` — run LLM-as-judge on a conversation
+- `GET /api/v1/conversations/{a}/compare/{b}` — pairwise comparison with scoring
+
+**New MCP tools:**
+- `score_conversation(conversation_id, dimensions)` — run auto-eval
+- `score_message(message_id, dimensions)` — score a single message
+- `compare_conversations(conv_a, conv_b, dimensions)` — pairwise eval
+
+### 4c. Analytics Aggregation
+
+Compute and expose metrics across sessions, conversations, and agents.
+
+| Metric | Description |
+|--------|-------------|
+| Messages per session | Volume tracking |
+| Tokens per conversation | Cost tracking |
+| Facts extracted per session | Memory effectiveness |
+| Tool call success rate | Tool reliability |
+| Consolidation yield | Observations → facts conversion rate |
+| Score distributions | Quality over time per dimension |
+| Branch divergence | How much forked conversations differ |
+| Replay improvement rate | % of replays that score higher than originals |
+
+**New files:**
+- `src/branchedmind/core/analytics_engine.py`
+
+**New API endpoints:**
+- `GET /api/v1/analytics/overview` — top-level dashboard metrics
+- `GET /api/v1/analytics/sessions/{id}` — per-session breakdown
+- `GET /api/v1/analytics/trends` — time-series metrics
+- `GET /api/v1/analytics/agents/{id}` — per-agent performance
+
+**New MCP tools:**
+- `analytics_overview(branch, time_range)` — summary stats
+- `analytics_session(session_id)` — session-level metrics
+
+### 4d. Dashboard — Replay & Analytics UI
+
+| Component | Description |
+|-----------|-------------|
 | Conversation list | Browse all conversations, filter by session/agent/status |
 | Message thread view | Replay a conversation message-by-message |
-| Fork visualization | Show conversation forks as a tree (like git branches) |
-| Diff view | Side-by-side comparison of two conversations |
-| Search across messages | Global semantic search with highlighted results |
+| Fork visualization | Show conversation forks as a tree (React Flow) |
+| Diff view | Side-by-side comparison of original vs replay |
+| Score overlay | Show scores inline on messages + aggregate on conversations |
+| Analytics dashboard | Charts: token usage, quality scores, tool success, trends over time |
+| Replay controls | "Replay from here" button on any message, configure model/prompt |
 | Session timeline | Combined view: messages + facts + observations chronologically |
+| Search | Global semantic search with highlighted results |
+
+### Phase 4 Execution Order
+
+```
+Step 1: Score model + ScoringEngine (foundation)
+Step 2: ReplayEngine (fork + re-execute)
+Step 3: AnalyticsEngine (aggregate metrics)
+Step 4: API endpoints for all three
+Step 5: MCP tools for all three
+Step 6: Dashboard components
+```
+
+Each step ships independently. Step 1 has no dependencies. Steps 2-3 depend
+on Step 1 (replays produce scores, analytics aggregate scores). Steps 4-5
+wrap the engines. Step 6 is the UI layer.
 
 ---
 
@@ -174,10 +321,12 @@ Transform from developer tool to multi-tenant SaaS.
 |---------|-------------|
 | Auth + multi-tenancy | User accounts, API keys, org-level isolation |
 | Ingest API | Universal REST endpoint for any agent framework |
+| OpenTelemetry ingest | Accept OTel traces, convert to Day1 conversations |
 | Webhooks | Push notifications on conversation events |
 | Usage tracking | Token counts, storage, API calls per tenant |
 | Public conversation sharing | Share a conversation like a GitHub gist |
 | CLI tool | `day1 push`, `day1 pull`, `day1 fork` from terminal |
+| CI/CD eval integration | Run evals in GitHub Actions, gate PRs on score thresholds |
 
 ---
 
