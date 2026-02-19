@@ -11,6 +11,7 @@ from branchedmind.core.exceptions import (
     ConversationNotFoundError,
     MessageNotFoundError,
 )
+from branchedmind.core.semantic_diff import SemanticDiffEngine
 from branchedmind.db.engine import get_session
 
 router = APIRouter()
@@ -167,6 +168,20 @@ async def diff_conversations(
     engine = ConversationEngine(session)
     try:
         return await engine.diff_conversations(conv_a, conv_b)
+    except ConversationNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/conversations/{conv_a}/semantic-diff/{conv_b}")
+async def semantic_diff_conversations(
+    conv_a: str,
+    conv_b: str,
+    session: AsyncSession = Depends(get_session),
+):
+    """Three-layer semantic diff: actions, reasoning, outcomes."""
+    engine = SemanticDiffEngine(session)
+    try:
+        return await engine.semantic_diff(conv_a, conv_b)
     except ConversationNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

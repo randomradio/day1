@@ -12,6 +12,7 @@ from branchedmind.core.exceptions import (
     ReplayError,
 )
 from branchedmind.core.replay_engine import ReplayConfig, ReplayEngine
+from branchedmind.core.semantic_diff import SemanticDiffEngine
 from branchedmind.db.engine import get_session
 
 router = APIRouter()
@@ -117,6 +118,37 @@ async def diff_replay(
         raise HTTPException(status_code=404, detail="Replay not found")
     except ReplayError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/replays/{replay_id}/semantic-diff")
+async def semantic_diff_replay(
+    replay_id: str,
+    session: AsyncSession = Depends(get_session),
+):
+    """Three-layer semantic diff of replay vs original.
+
+    Automatically resolves the original conversation from replay metadata.
+    Returns action diff, reasoning diff, and outcome diff.
+    """
+    replay_engine = ReplayEngine(session)
+    try:
+        # Get the original conversation ID from replay metadata
+        context = await replay_engine.get_replay_context(replay_id)
+    except ConversationNotFoundError:
+        raise HTTPException(status_code=404, detail="Replay not found")
+
+    original_id = context.get("original_conversation_id")
+    if not original_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot determine original conversation for this replay",
+        )
+
+    diff_engine = SemanticDiffEngine(session)
+    try:
+        return await diff_engine.semantic_diff(original_id, replay_id)
+    except ConversationNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.post("/replays/{replay_id}/complete")

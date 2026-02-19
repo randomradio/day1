@@ -19,6 +19,7 @@ from branchedmind.core.observation_engine import ObservationEngine
 from branchedmind.core.relation_engine import RelationEngine
 from branchedmind.core.replay_engine import ReplayConfig, ReplayEngine
 from branchedmind.core.search_engine import SearchEngine
+from branchedmind.core.semantic_diff import SemanticDiffEngine
 from branchedmind.core.session_manager import SessionManager
 from branchedmind.core.snapshot_manager import SnapshotManager
 from branchedmind.core.task_engine import TaskEngine
@@ -834,6 +835,35 @@ TOOL_DEFINITIONS: list[Tool] = [
             },
         },
     ),
+    # === Semantic Diff ===
+    Tool(
+        name="semantic_diff",
+        description=(
+            "Three-layer semantic diff between two agent conversations."
+            " Unlike text diff, this compares: (1) Action traces — what"
+            " tools were called, in what order, with what args."
+            " (2) Reasoning — whether the agent's thinking diverged"
+            " (via embedding similarity). (3) Outcomes — token efficiency,"
+            " error counts, final result. Use this to understand WHY two"
+            " conversation branches differ, not just WHERE."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "conversation_a": {
+                    "type": "string",
+                    "description": "First conversation ID (typically original)",
+                },
+                "conversation_b": {
+                    "type": "string",
+                    "description": (
+                        "Second conversation ID (typically replay or fork)"
+                    ),
+                },
+            },
+            "required": ["conversation_a", "conversation_b"],
+        },
+    ),
     # === Analytics ===
     Tool(
         name="analytics_overview",
@@ -1346,6 +1376,14 @@ async def handle_tool_call(
             limit=arguments.get("limit", 20),
         )
         return {"replays": replays, "count": len(replays)}
+
+    # === Semantic Diff ===
+    elif name == "semantic_diff":
+        engine = SemanticDiffEngine(session, embedder)
+        return await engine.semantic_diff(
+            conversation_a_id=arguments["conversation_a"],
+            conversation_b_id=arguments["conversation_b"],
+        )
 
     # === Analytics ===
     elif name == "analytics_overview":
