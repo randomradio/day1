@@ -299,17 +299,17 @@ Compute and expose metrics across sessions, conversations, and agents.
 ### Phase 4 Execution Order
 
 ```
-Step 1: Score model + ScoringEngine (foundation)
-Step 2: ReplayEngine (fork + re-execute)
-Step 3: AnalyticsEngine (aggregate metrics)
-Step 4: API endpoints for all three
-Step 5: MCP tools for all three
-Step 6: Dashboard components
+Step 1: ReplayEngine (fork + re-execute)          ← core differentiator
+Step 2: AnalyticsEngine (aggregate metrics)        ← immediate user value
+Step 3: API endpoints for replay + analytics       ← expose via REST
+Step 4: MCP tools for replay + analytics           ← expose via MCP
+Step 5: Score model + ScoringEngine                ← layer on evaluation
+Step 6: Dashboard components                       ← UI last
 ```
 
-Each step ships independently. Step 1 has no dependencies. Steps 2-3 depend
-on Step 1 (replays produce scores, analytics aggregate scores). Steps 4-5
-wrap the engines. Step 6 is the UI layer.
+Steps 1-2 ship independently (no cross-dependency). Steps 3-4 wrap the
+engines as they land. Step 5 layers scoring on top of replay + analytics.
+Step 6 is the UI layer.
 
 ---
 

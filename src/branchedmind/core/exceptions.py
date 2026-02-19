@@ -51,3 +51,11 @@ class ConversationNotFoundError(BranchedMindError):
 
 class MessageNotFoundError(BranchedMindError):
     """Requested message does not exist."""
+
+
+class ReplayError(BranchedMindError):
+    """Replay operation failed."""
+
+
+class AnalyticsError(BranchedMindError):
+    """Analytics computation failed."""

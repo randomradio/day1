@@ -7,6 +7,7 @@ from collections.abc import Callable
 from mcp.types import Tool
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from branchedmind.core.analytics_engine import AnalyticsEngine
 from branchedmind.core.branch_manager import BranchManager
 from branchedmind.core.consolidation_engine import ConsolidationEngine
 from branchedmind.core.conversation_engine import ConversationEngine
@@ -16,6 +17,7 @@ from branchedmind.core.merge_engine import MergeEngine
 from branchedmind.core.message_engine import MessageEngine
 from branchedmind.core.observation_engine import ObservationEngine
 from branchedmind.core.relation_engine import RelationEngine
+from branchedmind.core.replay_engine import ReplayConfig, ReplayEngine
 from branchedmind.core.search_engine import SearchEngine
 from branchedmind.core.session_manager import SessionManager
 from branchedmind.core.snapshot_manager import SnapshotManager
@@ -744,6 +746,181 @@ TOOL_DEFINITIONS: list[Tool] = [
             "required": ["session_id"],
         },
     ),
+    # === Replay ===
+    Tool(
+        name="replay_conversation",
+        description=(
+            "Fork a conversation at a specific message and prepare for"
+            " re-execution with different parameters. Returns the forked"
+            " conversation ready for new messages. Use this to explore"
+            " 'what if' scenarios — replay with a different model,"
+            " system prompt, or context."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "conversation_id": {
+                    "type": "string",
+                    "description": "Source conversation to replay from",
+                },
+                "from_message_id": {
+                    "type": "string",
+                    "description": (
+                        "Fork at this message (inclusive — this and all"
+                        " prior messages are copied)"
+                    ),
+                },
+                "system_prompt": {
+                    "type": "string",
+                    "description": "Override system prompt for the replay",
+                },
+                "model": {
+                    "type": "string",
+                    "description": "Override model for the replay",
+                },
+                "extra_context": {
+                    "type": "string",
+                    "description": (
+                        "Additional context injected as a system message"
+                        " before the replay point"
+                    ),
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Title for the replayed conversation",
+                },
+            },
+            "required": ["conversation_id", "from_message_id"],
+        },
+    ),
+    Tool(
+        name="replay_diff",
+        description=(
+            "Diff a replayed conversation against its original."
+            " Shows what changed between the original and the replay."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "replay_id": {
+                    "type": "string",
+                    "description": "The replay (forked) conversation ID",
+                },
+            },
+            "required": ["replay_id"],
+        },
+    ),
+    Tool(
+        name="replay_list",
+        description=(
+            "List replay conversations, optionally filtered by"
+            " source conversation or session."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "conversation_id": {
+                    "type": "string",
+                    "description": "Filter replays of this conversation",
+                },
+                "session_id": {
+                    "type": "string",
+                    "description": "Filter replays from this session",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results (default: 20)",
+                },
+            },
+        },
+    ),
+    # === Analytics ===
+    Tool(
+        name="analytics_overview",
+        description=(
+            "Get top-level dashboard metrics: entity counts, token usage,"
+            " recent activity, and consolidation stats. Useful for"
+            " understanding overall system health and usage."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "branch": {
+                    "type": "string",
+                    "description": "Filter to branch (omit for all)",
+                },
+                "days": {
+                    "type": "integer",
+                    "description": "Lookback window in days (default: 30)",
+                },
+            },
+        },
+    ),
+    Tool(
+        name="analytics_session",
+        description=(
+            "Get per-session analytics: conversation count, messages,"
+            " tokens, facts created, tool usage breakdown, and"
+            " message role distribution."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "session_id": {
+                    "type": "string",
+                    "description": "Session to analyze",
+                },
+            },
+            "required": ["session_id"],
+        },
+    ),
+    Tool(
+        name="analytics_agent",
+        description=(
+            "Get per-agent performance: sessions, conversations,"
+            " facts by category, tool usage with outcomes,"
+            " and task assignments."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "agent_id": {
+                    "type": "string",
+                    "description": "Agent to analyze",
+                },
+                "days": {
+                    "type": "integer",
+                    "description": "Lookback window in days (default: 30)",
+                },
+            },
+            "required": ["agent_id"],
+        },
+    ),
+    Tool(
+        name="analytics_trends",
+        description=(
+            "Get time-series metrics: messages, facts, and conversations"
+            " over time. Useful for spotting usage patterns and growth."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "branch": {
+                    "type": "string",
+                    "description": "Filter to branch (omit for all)",
+                },
+                "days": {
+                    "type": "integer",
+                    "description": "Lookback window in days (default: 30)",
+                },
+                "granularity": {
+                    "type": "string",
+                    "description": "'day' or 'hour' (default: 'day')",
+                    "enum": ["day", "hour"],
+                },
+            },
+        },
+    ),
 ]
 
 
@@ -1133,6 +1310,68 @@ async def handle_tool_call(
             session_id=arguments["session_id"],
             message_limit=arguments.get("message_limit", 50),
             fact_limit=arguments.get("fact_limit", 20),
+        )
+
+    # === Replay ===
+    elif name == "replay_conversation":
+        engine = ReplayEngine(session)
+        config = ReplayConfig(
+            system_prompt=arguments.get("system_prompt"),
+            model=arguments.get("model"),
+            extra_context=arguments.get("extra_context"),
+            title=arguments.get("title"),
+        )
+        result = await engine.start_replay(
+            conversation_id=arguments["conversation_id"],
+            from_message_id=arguments["from_message_id"],
+            config=config,
+        )
+        return {
+            "replay_id": result.replay_id,
+            "original_conversation_id": result.original_conversation_id,
+            "forked_conversation_id": result.forked_conversation_id,
+            "status": result.status,
+            "messages_copied": result.messages_copied,
+        }
+
+    elif name == "replay_diff":
+        engine = ReplayEngine(session)
+        return await engine.diff_replay(arguments["replay_id"])
+
+    elif name == "replay_list":
+        engine = ReplayEngine(session)
+        replays = await engine.list_replays(
+            conversation_id=arguments.get("conversation_id"),
+            session_id=arguments.get("session_id"),
+            limit=arguments.get("limit", 20),
+        )
+        return {"replays": replays, "count": len(replays)}
+
+    # === Analytics ===
+    elif name == "analytics_overview":
+        engine = AnalyticsEngine(session)
+        return await engine.overview(
+            branch_name=arguments.get("branch"),
+            days=arguments.get("days", 30),
+        )
+
+    elif name == "analytics_session":
+        engine = AnalyticsEngine(session)
+        return await engine.session_analytics(arguments["session_id"])
+
+    elif name == "analytics_agent":
+        engine = AnalyticsEngine(session)
+        return await engine.agent_analytics(
+            agent_id=arguments["agent_id"],
+            days=arguments.get("days", 30),
+        )
+
+    elif name == "analytics_trends":
+        engine = AnalyticsEngine(session)
+        return await engine.trends(
+            branch_name=arguments.get("branch"),
+            days=arguments.get("days", 30),
+            granularity=arguments.get("granularity", "day"),
         )
 
     else:

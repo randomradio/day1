@@ -7,12 +7,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from branchedmind.api.routes import (
+    analytics,
     branches,
     conversations,
     facts,
     messages,
     observations,
     relations,
+    replays,
     search,
     sessions,
     snapshots,
@@ -54,6 +56,8 @@ app.include_router(relations.router, prefix="/api/v1", tags=["relations"])
 app.include_router(branches.router, prefix="/api/v1", tags=["branches"])
 app.include_router(sessions.router, prefix="/api/v1", tags=["sessions"])
 app.include_router(snapshots.router, prefix="/api/v1", tags=["snapshots"])
+app.include_router(replays.router, prefix="/api/v1", tags=["replays"])
+app.include_router(analytics.router, prefix="/api/v1", tags=["analytics"])
 
 
 @app.get("/health")
