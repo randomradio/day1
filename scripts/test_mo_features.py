@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify MatrixOne features required by BranchedMind.
+"""Verify MatrixOne features required by Day1.
 
 Usage:
     BM_DATABASE_URL="mysql+aiomysql://user:pass@host:6001/db" \

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from branchedmind.core.embedding import MockEmbedding
-from branchedmind.core.fact_engine import FactEngine
-from branchedmind.core.snapshot_manager import SnapshotManager
+from day1.core.embedding import MockEmbedding
+from day1.core.fact_engine import FactEngine
+from day1.core.snapshot_manager import SnapshotManager
 
 
 @pytest.mark.asyncio

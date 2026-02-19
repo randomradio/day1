@@ -1,4 +1,4 @@
-"""Pytest fixtures for BranchedMind tests (MatrixOne backend)."""
+"""Pytest fixtures for Day1 tests (MatrixOne backend)."""
 
 from __future__ import annotations
 
@@ -34,15 +34,15 @@ _TEST_DB_URL = os.environ.get(
     "BM_TEST_DATABASE_URL",
     os.environ.get(
         "BM_DATABASE_URL",
-        "mysql+aiomysql://root:111@127.0.0.1:6001/branchedmind",
+        "mysql+aiomysql://root:111@127.0.0.1:6001/day1",
     ),
 )
 os.environ["BM_DATABASE_URL"] = _TEST_DB_URL
 os.environ["BM_EMBEDDING_PROVIDER"] = "mock"
 
-from branchedmind.core.branch_manager import BranchManager
-from branchedmind.core.embedding import MockEmbedding
-from branchedmind.db.models import Base
+from day1.core.branch_manager import BranchManager
+from day1.core.embedding import MockEmbedding
+from day1.db.models import Base
 
 
 @pytest_asyncio.fixture

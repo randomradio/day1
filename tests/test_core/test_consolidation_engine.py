@@ -4,18 +4,18 @@ from __future__ import annotations
 
 import pytest
 
-from branchedmind.core.branch_manager import BranchManager
-from branchedmind.core.consolidation_engine import (
+from day1.core.branch_manager import BranchManager
+from day1.core.consolidation_engine import (
     ConsolidationEngine,
     _jaccard_similarity,
     _infer_category,
     _tokenize,
 )
-from branchedmind.core.embedding import MockEmbedding
-from branchedmind.core.exceptions import ConsolidationError
-from branchedmind.core.fact_engine import FactEngine
-from branchedmind.core.observation_engine import ObservationEngine
-from branchedmind.core.task_engine import TaskEngine
+from day1.core.embedding import MockEmbedding
+from day1.core.exceptions import ConsolidationError
+from day1.core.fact_engine import FactEngine
+from day1.core.observation_engine import ObservationEngine
+from day1.core.task_engine import TaskEngine
 
 
 @pytest.mark.asyncio

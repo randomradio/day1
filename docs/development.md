@@ -1,6 +1,6 @@
 # Development Commands
 
-Commands for setting up, running, and testing BranchedMind. Read this when setting up env or running builds/tests.
+Commands for setting up, running, and testing Day1. Read this when setting up env or running builds/tests.
 
 ## Prerequisites
 
@@ -71,16 +71,16 @@ bash scripts/run.sh dashboard   # Start React dashboard (:5173)
 
 ```bash
 # FastAPI REST API
-uv run uvicorn branchedmind.api.app:app --reload --port 8000
+uv run uvicorn day1.api.app:app --reload --port 8000
 
 # FastAPI with debug
-uv run uvicorn branchedmind.api.app:app --reload --port 8000 --log-level debug
+uv run uvicorn day1.api.app:app --reload --port 8000 --log-level debug
 
 # MCP server (stdio mode) - for Claude Code integration
-uv run python -m branchedmind.mcp.server
+uv run python -m day1.mcp.server
 
 # MCP server (SSE mode) - for testing/debug
-uv run uvicorn branchedmind.mcp.server_http:app --reload --port 3001
+uv run uvicorn day1.mcp.server_http:app --reload --port 3001
 ```
 
 ## Dashboard (Frontend)

@@ -1,4 +1,4 @@
-# BranchedMind v2
+# Day1 v2
 
 Git-like memory layer for AI agents — managing writes, retrieval, branching, merging, snapshots, and time-travel.
 
@@ -14,7 +14,7 @@ uv sync --all-extras
 uv run python scripts/test_mo_features.py
 
 # Start API server
-uv run uvicorn branchedmind.api.app:app --reload --port 8000
+uv run uvicorn day1.api.app:app --reload --port 8000
 
 # Start dashboard
 cd dashboard && npm install && npm run dev

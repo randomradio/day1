@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from branchedmind.core.embedding import MockEmbedding
-from branchedmind.core.observation_engine import ObservationEngine
-from branchedmind.core.relation_engine import RelationEngine
+from day1.core.embedding import MockEmbedding
+from day1.core.observation_engine import ObservationEngine
+from day1.core.relation_engine import RelationEngine
 
 
 @pytest.mark.asyncio

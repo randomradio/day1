@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from branchedmind.core.embedding import MockEmbedding
-from branchedmind.core.exceptions import TaskNotFoundError, TaskAgentError
-from branchedmind.core.fact_engine import FactEngine
-from branchedmind.core.task_engine import TaskEngine, _slugify
+from day1.core.embedding import MockEmbedding
+from day1.core.exceptions import TaskNotFoundError, TaskAgentError
+from day1.core.fact_engine import FactEngine
+from day1.core.task_engine import TaskEngine, _slugify
 
 
 @pytest.mark.asyncio

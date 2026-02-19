@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from branchedmind.core.embedding import MockEmbedding
-from branchedmind.core.exceptions import FactNotFoundError
-from branchedmind.core.fact_engine import FactEngine
+from day1.core.embedding import MockEmbedding
+from day1.core.exceptions import FactNotFoundError
+from day1.core.fact_engine import FactEngine
 
 
 @pytest.mark.asyncio

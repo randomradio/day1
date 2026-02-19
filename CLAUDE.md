@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project: Day1 (BranchedMind v2 Memory Layer)
+## Project: Day1 (Day1 v2 Memory Layer)
 
 **WHAT**: A Git-like memory layer for AI agents - managing writes, retrieval, branching, merging, snapshots, and time-travel.
 
@@ -48,7 +48,7 @@ Main branch uses base tables (`facts`, `relations`, `observations`). Feature bra
 
 ## Key Differentiators
 
-Unlike `claude-mem`, BranchedMind adds: branch/merge, PITR/time-travel, multi-agent isolation, knowledge graph.
+Unlike `claude-mem`, Day1 adds: branch/merge, PITR/time-travel, multi-agent isolation, knowledge graph.
 
 ---
 
@@ -58,7 +58,7 @@ Unlike `claude-mem`, BranchedMind adds: branch/merge, PITR/time-travel, multi-ag
 
 ## Day1 Memory Integration
 
-This project uses Day1 (BranchedMind v2) MCP tools for persistent memory across sessions.
+This project uses Day1 (Day1 v2) MCP tools for persistent memory across sessions.
 
 ### Automatic Session Tracking
 

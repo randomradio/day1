@@ -1,4 +1,4 @@
-# BranchedMind v2: 纯粹记忆层架构设计
+# Day1 v2: 纯粹记忆层架构设计
 
 ## 重新定位：从"多 Agent 平台"到"纯粹记忆层"
 
@@ -7,11 +7,11 @@
 ## 0. 设计哲学的转变
 
 ### v1 的问题
-v1 设计中，BranchedMind 试图同时解决两个问题：记忆管理 + 多 Agent 编排。这导致系统既要关心 Agent 如何运行，又要管理记忆如何存储，职责不清晰。
+v1 设计中，Day1 试图同时解决两个问题：记忆管理 + 多 Agent 编排。这导致系统既要关心 Agent 如何运行，又要管理记忆如何存储，职责不清晰。
 
 ### v2 的核心原则
 
-**BranchedMind 是一个纯粹的记忆层（Memory Layer），它：**
+**Day1 是一个纯粹的记忆层（Memory Layer），它：**
 
 1. **不关心上层是什么** —— 可以是 1 个 Claude Code session，也可以是 20 个并行 Agent，也可以是一个 Cursor/Copilot/任意 AI agent
 2. **只关心记忆的生命周期** —— 写入、检索、分支、合并、快照、时间回溯
@@ -21,13 +21,13 @@ v1 设计中，BranchedMind 试图同时解决两个问题：记忆管理 + 多 
 ### 类比
 
 ```
-BranchedMind 之于 Agent Memory ≈ Git 之于 Source Code
+Day1 之于 Agent Memory ≈ Git 之于 Source Code
 
 Git 不关心你用什么 IDE、几个人开发、什么语言。
 它只管：存储、分支、合并、历史、回溯。
 上层工具（GitHub, VS Code, CI/CD）自己决定怎么用它。
 
-BranchedMind 同理。
+Day1 同理。
 ```
 
 ---
@@ -624,7 +624,7 @@ export async function handler(input: PreCompactHookInput): Promise<SyncHookJSONO
   }
   
   return {
-    systemMessage: `[BranchedMind] 从即将压缩的上下文中提取了 ${facts.length} 条事实和 ${relations.length} 条关系。`,
+    systemMessage: `[Day1] 从即将压缩的上下文中提取了 ${facts.length} 条事实和 ${relations.length} 条关系。`,
   };
 }
 ```
@@ -706,7 +706,7 @@ GET    /api/v1/time-travel             # 时间回溯查询
 5. 调用 memory_branch_merge(strategy="cherry_pick", items=[...])
 6. 合并最佳记忆到 main
 
-BranchedMind 完全不知道（也不关心）有多少 Agent 在运行。
+Day1 完全不知道（也不关心）有多少 Agent 在运行。
 它只看到不同的分支有数据在写入。
 ```
 
@@ -910,7 +910,7 @@ Phase 3: 分支差异化 (Day 3, ~24h)
 ```
 准备:
 - 一个有 bug 的 Python 项目（API 状态码错误）
-- BranchedMind 已安装为 Claude Code Plugin
+- Day1 已安装为 Claude Code Plugin
 
 演示:
 1. 通过 Agent SDK 启动 3 个并行 Claude Code sessions

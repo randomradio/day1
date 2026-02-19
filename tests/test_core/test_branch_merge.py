@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from branchedmind.core.branch_manager import BranchManager
-from branchedmind.core.embedding import MockEmbedding
-from branchedmind.core.exceptions import BranchExistsError, BranchNotFoundError
-from branchedmind.core.fact_engine import FactEngine
-from branchedmind.core.merge_engine import MergeEngine
-from branchedmind.core.relation_engine import RelationEngine
+from day1.core.branch_manager import BranchManager
+from day1.core.embedding import MockEmbedding
+from day1.core.exceptions import BranchExistsError, BranchNotFoundError
+from day1.core.fact_engine import FactEngine
+from day1.core.merge_engine import MergeEngine
+from day1.core.relation_engine import RelationEngine
 
 
 @pytest.mark.asyncio

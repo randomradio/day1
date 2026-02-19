@@ -8,8 +8,8 @@ import sys
 
 sys.path.insert(0, "src")
 
-from branchedmind.core.branch_manager import BranchManager
-from branchedmind.db.engine import get_session, init_db
+from day1.core.branch_manager import BranchManager
+from day1.db.engine import get_session, init_db
 
 
 async def main() -> None:

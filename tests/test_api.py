@@ -14,16 +14,16 @@ _TEST_DB_URL = os.environ.get(
     "BM_TEST_DATABASE_URL",
     os.environ.get(
         "BM_DATABASE_URL",
-        "mysql+aiomysql://root:111@127.0.0.1:6001/branchedmind",
+        "mysql+aiomysql://root:111@127.0.0.1:6001/day1",
     ),
 )
 os.environ["BM_DATABASE_URL"] = _TEST_DB_URL
 os.environ["BM_EMBEDDING_PROVIDER"] = "mock"
 
-from branchedmind.api.app import app
-from branchedmind.core.branch_manager import BranchManager
-from branchedmind.db.engine import get_session
-from branchedmind.db.models import Base
+from day1.api.app import app
+from day1.core.branch_manager import BranchManager
+from day1.db.engine import get_session
+from day1.db.models import Base
 
 
 @pytest_asyncio.fixture

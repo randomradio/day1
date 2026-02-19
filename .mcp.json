@@ -2,7 +2,7 @@
   "mcpServers": {
     "day1": {
       "command": "/Users/randomradio/src/day1/.venv/bin/python",
-      "args": ["-m", "branchedmind.mcp.server"],
+      "args": ["-m", "day1.mcp.server"],
       "cwd": "/Users/randomradio/src/day1"
     }
   }

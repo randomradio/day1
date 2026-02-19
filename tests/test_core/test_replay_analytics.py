@@ -5,14 +5,14 @@ from __future__ import annotations
 import pytest
 import pytest_asyncio
 
-from branchedmind.core.analytics_engine import AnalyticsEngine
-from branchedmind.core.conversation_engine import ConversationEngine
-from branchedmind.core.embedding import MockEmbedding
-from branchedmind.core.exceptions import ConversationNotFoundError, ReplayError
-from branchedmind.core.message_engine import MessageEngine
-from branchedmind.core.replay_engine import ReplayConfig, ReplayEngine
-from branchedmind.core.scoring_engine import ScoringEngine, _call_llm_judge
-from branchedmind.core.semantic_diff import SemanticDiffEngine
+from day1.core.analytics_engine import AnalyticsEngine
+from day1.core.conversation_engine import ConversationEngine
+from day1.core.embedding import MockEmbedding
+from day1.core.exceptions import ConversationNotFoundError, ReplayError
+from day1.core.message_engine import MessageEngine
+from day1.core.replay_engine import ReplayConfig, ReplayEngine
+from day1.core.scoring_engine import ScoringEngine, _call_llm_judge
+from day1.core.semantic_diff import SemanticDiffEngine
 
 
 # --- Helpers ---
@@ -449,7 +449,7 @@ class TestScoringEngine:
         # Pass None explicitly to simulate no LLM
         engine = ScoringEngine(db_session, llm_client=None)
         # Patch get_llm_client to return None
-        import branchedmind.core.scoring_engine as se_mod
+        import day1.core.scoring_engine as se_mod
         original = se_mod._call_llm_judge
 
         async def _fallback_judge(text, dims, client=None):

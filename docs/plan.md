@@ -40,7 +40,7 @@
 
 ## Phase 1: Memory Layer (Complete)
 
-Original BranchedMind v2 — git-like memory for AI agents.
+Original Day1 v2 — git-like memory for AI agents.
 
 | Component | Status |
 |-----------|--------|

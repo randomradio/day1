@@ -1,6 +1,6 @@
 # Architecture
 
-BranchedMind system design and integration points. Read this when understanding how components connect.
+Day1 system design and integration points. Read this when understanding how components connect.
 
 ## Layer Architecture
 

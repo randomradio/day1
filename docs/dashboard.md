@@ -1,6 +1,6 @@
 # Dashboard
 
-Frontend dashboard for BranchedMind memory visualization. Read this when working on the UI.
+Frontend dashboard for Day1 memory visualization. Read this when working on the UI.
 
 ## Tech Stack
 
