@@ -6,8 +6,6 @@ Extracts structured facts and relations to prevent information loss.
 
 from __future__ import annotations
 
-import asyncio
-
 from day1.core.embedding import get_embedding_provider
 from day1.core.fact_engine import FactEngine
 from day1.core.relation_engine import RelationEngine
@@ -15,8 +13,7 @@ from day1.core.search_engine import SearchEngine
 from day1.hooks.base import (
     get_db_session,
     get_session_id,
-    read_hook_input,
-    write_hook_output,
+    run_hook,
 )
 
 
@@ -158,11 +155,5 @@ def _extract_relations_heuristic(transcript: str) -> list[dict]:
     return relations[:10]
 
 
-def main() -> None:
-    input_data = read_hook_input()
-    result = asyncio.run(handler(input_data))
-    write_hook_output(result)
-
-
 if __name__ == "__main__":
-    main()
+    run_hook(handler)

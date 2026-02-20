@@ -6,7 +6,6 @@ Stores the assistant's final message in the conversation history layer.
 
 from __future__ import annotations
 
-import asyncio
 import os
 
 from day1.core.conversation_engine import ConversationEngine
@@ -15,8 +14,7 @@ from day1.core.message_engine import MessageEngine
 from day1.hooks.base import (
     get_db_session,
     get_session_id,
-    read_hook_input,
-    write_hook_output,
+    run_hook,
 )
 
 
@@ -64,11 +62,5 @@ async def handler(input_data: dict) -> dict:
     return {}
 
 
-def main() -> None:
-    input_data = read_hook_input()
-    result = asyncio.run(handler(input_data))
-    write_hook_output(result)
-
-
 if __name__ == "__main__":
-    main()
+    run_hook(handler)

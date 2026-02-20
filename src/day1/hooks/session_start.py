@@ -6,7 +6,6 @@ Returns additional context to be injected into the system prompt.
 
 from __future__ import annotations
 
-import asyncio
 import os
 
 from day1.core.branch_manager import BranchManager
@@ -20,8 +19,7 @@ from day1.hooks.base import (
     get_db_session,
     get_project_path,
     get_session_id,
-    read_hook_input,
-    write_hook_output,
+    run_hook,
 )
 
 
@@ -211,11 +209,5 @@ async def handler() -> dict:
     }
 
 
-def main() -> None:
-    _input = read_hook_input()
-    result = asyncio.run(handler())
-    write_hook_output(result)
-
-
 if __name__ == "__main__":
-    main()
+    run_hook(handler, takes_input=False)

@@ -7,7 +7,6 @@ and marks the session as completed.
 
 from __future__ import annotations
 
-import asyncio
 import os
 
 from day1.core.consolidation_engine import ConsolidationEngine
@@ -18,8 +17,7 @@ from day1.core.session_manager import SessionManager
 from day1.hooks.base import (
     get_db_session,
     get_session_id,
-    read_hook_input,
-    write_hook_output,
+    run_hook,
 )
 
 
@@ -104,11 +102,5 @@ def _generate_session_summary(observations: list) -> str:
     return ". ".join(parts) + "." if parts else "Session completed."
 
 
-def main() -> None:
-    input_data = read_hook_input()
-    result = asyncio.run(handler(input_data))
-    write_hook_output(result)
-
-
 if __name__ == "__main__":
-    main()
+    run_hook(handler)

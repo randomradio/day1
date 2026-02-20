@@ -7,7 +7,6 @@ including task and agent context when available.
 
 from __future__ import annotations
 
-import asyncio
 import os
 
 from day1.core.conversation_engine import ConversationEngine
@@ -17,8 +16,7 @@ from day1.core.observation_engine import ObservationEngine
 from day1.hooks.base import (
     get_db_session,
     get_session_id,
-    read_hook_input,
-    write_hook_output,
+    run_hook,
 )
 
 
@@ -102,11 +100,5 @@ def _compress_observation(
         return f"Used {tool_name}: {input_str[:150]}. Result: {output_str[:150]}"
 
 
-def main() -> None:
-    input_data = read_hook_input()
-    result = asyncio.run(handler(input_data))
-    write_hook_output(result)
-
-
 if __name__ == "__main__":
-    main()
+    run_hook(handler)

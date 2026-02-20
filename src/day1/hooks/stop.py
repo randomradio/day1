@@ -6,15 +6,12 @@ Generates a brief summary of what was accomplished.
 
 from __future__ import annotations
 
-import asyncio
-
 from day1.core.embedding import get_embedding_provider
 from day1.core.observation_engine import ObservationEngine
 from day1.hooks.base import (
     get_db_session,
     get_session_id,
-    read_hook_input,
-    write_hook_output,
+    run_hook,
 )
 
 
@@ -60,11 +57,5 @@ def _summarize_response(response: str) -> str:
     return ""
 
 
-def main() -> None:
-    input_data = read_hook_input()
-    result = asyncio.run(handler(input_data))
-    write_hook_output(result)
-
-
 if __name__ == "__main__":
-    main()
+    run_hook(handler)
