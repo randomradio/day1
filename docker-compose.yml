@@ -1,0 +1,48 @@
+services:
+  # ── MatrixOne (local dev database) ────────────────────────
+  matrixone:
+    image: matrixorigin/matrixone:2.0.1
+    ports:
+      - "6001:6001"
+    volumes:
+      - mo_data:/mo-data
+    environment:
+      - MYSQL_ROOT_PASSWORD=day1
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-P", "6001", "-u", "root", "-pday1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 10
+
+  # ── FastAPI backend ───────────────────────────────────────
+  api:
+    build:
+      context: .
+      target: api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # Override DB URL to point to the local MatrixOne container
+      - BM_DATABASE_URL=mysql+aiomysql://root:day1@matrixone:6001/day1
+      - BM_HOST=0.0.0.0
+    depends_on:
+      matrixone:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Nginx: serves dashboard + proxies /api ────────────────
+  dashboard:
+    build:
+      context: .
+      target: dashboard
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  mo_data:
