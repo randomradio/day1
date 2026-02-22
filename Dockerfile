@@ -15,28 +15,38 @@ RUN npm run build
 # ──────────────────────────────────────────────
 FROM python:3.11-slim AS api
 
+# Install system deps and uv
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc libffi-dev && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends gcc libffi-dev curl && \
+    rm -rf /var/lib/apt/lists/* && \
+    curl -LsSf https://astral.sh/uv/install.sh | sh && \
+    mv /root/.local/bin/uv /usr/local/bin/uv
+
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Install Python deps (cache-friendly layer)
+# Copy metadata files FIRST (needed for hatchling to read pyproject.toml)
+COPY README.md ./
 COPY pyproject.toml ./
-RUN pip install --no-cache-dir ".[matrixone]"
 
-# Copy source and install package
+# Install dependencies with uv (fast!)
+RUN uv pip install --system ".[matrixone]"
+
+# Copy source and install package in editable mode for dev
 COPY src/ ./src/
-RUN pip install --no-cache-dir -e .
-
 COPY scripts/ ./scripts/
 COPY .env.example ./.env.example
 
-ENV BM_HOST=0.0.0.0
-ENV BM_PORT=8000
-ENV BM_EMBEDDING_PROVIDER=mock
-ENV BM_LOG_LEVEL=DEBUG
-ENV BM_LOG_FORMAT=text
+RUN uv pip install --system -e .
+
+ENV BM_HOST=0.0.0.0 \
+    BM_PORT=8000 \
+    BM_EMBEDDING_PROVIDER=mock \
+    BM_LOG_LEVEL=DEBUG \
+    BM_LOG_FORMAT=text
 
 EXPOSE 8000
 
