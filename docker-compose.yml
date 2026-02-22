@@ -6,6 +6,11 @@ services:
       - "6001:6001"
     volumes:
       - mo_data:/mo-data
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "5"
+        max-size: "20m"
     environment:
       - MYSQL_ROOT_PASSWORD=day1
     healthcheck:
