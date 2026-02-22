@@ -192,6 +192,176 @@ Day1             Y        Y      Y         Y           Y  <- unique
 
 ---
 
+## Phase 5: Task Handoff, Knowledge Curation & Sharing
+
+**Design Doc**: [`docs/phase5-task-handoff-and-curation.md`](phase5-task-handoff-and-curation.md)
+
+**Core Thesis**: 让 Day1 成为 agent 记忆的 GitHub — 任务可传递、对话可 cherry-pick、正确知识可 replay & 分享。
+
+### What Phase 5 Adds
+
+```
+Phase 1-4 (Done):    write → search → branch → merge → replay → diff → score
+Phase 5 (New):       handoff → cherry-pick → verify → bundle → share → import
+                     ─────────────────────────────────────────────────────────
+                     Task can be handed off to another agent/session
+                     Correct conversations can be cherry-picked
+                     Merged knowledge is verified before promotion
+                     Verified knowledge is bundled and shareable
+```
+
+### 5a. Data Model Extensions
+
+| Model | Type | Description | Status |
+|-------|------|-------------|--------|
+| `KnowledgeBundle` | New table | Curated, shareable knowledge packages | Planned |
+| `HandoffRecord` | New table | Task handoff protocol records | Planned |
+| `Conversation.verification_status` | Column | verified / rejected / NULL | Planned |
+| `Message.is_cherry_picked` | Column | Track cherry-pick provenance | Planned |
+| `Fact.status` += 'verified','promoted' | Values | Extended fact lifecycle | Planned |
+
+### 5b. Handoff Engine
+
+Task handoff protocol — a first-class primitive for passing work between agents.
+
+| Component | Description | Status |
+|-----------|-------------|--------|
+| `HandoffEngine` | create / accept / list / checkpoint handoffs | Planned |
+| `HandoffContext` dataclass | Frozen context snapshot for handoff | Planned |
+| `POST /api/v1/handoffs` | Create handoff | Planned |
+| `POST /api/v1/handoffs/{id}/accept` | Accept handoff | Planned |
+| `GET /api/v1/handoffs` | List pending handoffs | Planned |
+| MCP: `memory_handoff_create` | Create handoff from MCP | Planned |
+| MCP: `memory_handoff_accept` | Accept handoff from MCP | Planned |
+| MCP: `memory_handoff_list` | List handoffs from MCP | Planned |
+
+Handoff types: `full` (transfer all), `partial` (transfer remaining), `escalation` (stuck → expert), `checkpoint` (save progress).
+
+### 5c. Conversation Cherry-Pick
+
+Cherry-pick conversations or message ranges between branches.
+
+| Component | Description | Status |
+|-----------|-------------|--------|
+| `ConversationCherryPickEngine` | Pick conversations/messages/decisions | Planned |
+| `cherry_pick_conversation()` | Full conversation to target branch | Planned |
+| `cherry_pick_message_range()` | Specific message range (from_seq → to_seq) | Planned |
+| `cherry_pick_decisions()` | Auto-extract decision-point messages | Planned |
+| `cherry_pick_to_facts()` | Extract verified facts from conversation | Planned |
+| `POST /api/v1/conversations/{id}/cherry-pick` | REST endpoint | Planned |
+| MCP: `memory_cherry_pick_conversation` | MCP tool | Planned |
+| MCP: `memory_cherry_pick_decisions` | MCP tool | Planned |
+
+### 5d. Verification Engine
+
+LLM-powered quality gate for facts and conversations before merge/promotion.
+
+| Component | Description | Status |
+|-----------|-------------|--------|
+| `VerificationEngine` | LLM-as-judge verification | Planned |
+| `verify_fact()` | Verify single fact (score → verified/invalidated) | Planned |
+| `verify_conversation()` | Evaluate conversation decision quality | Planned |
+| `batch_verify()` | Verify all unverified items on a branch | Planned |
+| `POST /api/v1/branches/{name}/verify` | REST endpoint | Planned |
+| MCP: `memory_verify_branch` | MCP tool | Planned |
+
+Verification reuses existing `ScoringEngine` infrastructure. Threshold-based: score >= 0.7 → verified, < 0.4 → invalidated.
+
+### 5e. Task Replay & Knowledge Bundles
+
+Task-level replay + shareable knowledge packages.
+
+| Component | Description | Status |
+|-----------|-------------|--------|
+| `TaskReplayEngine` | Build & replay entire task workflows | Planned |
+| `build_task_replay()` | Complete timeline + agents + facts + conversations | Planned |
+| `export_as_bundle()` | Package verified knowledge → KnowledgeBundle | Planned |
+| `replay_from_bundle()` | Import bundle into target branch | Planned |
+| `compare_task_runs()` | SemanticDiff at task level | Planned |
+| `POST /api/v1/bundles` | Create bundle | Planned |
+| `GET /api/v1/bundles/shared/{token}` | Access shared bundle | Planned |
+| `POST /api/v1/bundles/{id}/import` | Import bundle | Planned |
+| MCP: `memory_bundle_create` | Create bundle from MCP | Planned |
+| MCP: `memory_bundle_import` | Import bundle from MCP | Planned |
+| MCP: `memory_task_replay` | Replay task from MCP | Planned |
+| MCP: `memory_compare_tasks` | Compare task runs from MCP | Planned |
+
+### 5f. Dashboard — Task View
+
+| Component | Description | Status |
+|-----------|-------------|--------|
+| Task tab in main navigation | 4th tab: Memory / Conversations / Tasks / Analytics | Planned |
+| `TaskList` component | Browse tasks with status filters | Planned |
+| `TaskDetail` component | Objectives, agents, timeline, conversations | Planned |
+| `HandoffTimeline` component | Visual handoff chain between agents | Planned |
+| `CherryPickPanel` component | Select & cherry-pick conversations/messages | Planned |
+| `BundleManager` component | Create, browse, import bundles | Planned |
+| `taskStore.ts` | Zustand store for task state | Planned |
+
+### 5g. Tests
+
+| Test Class | Tests | Coverage |
+|------------|-------|----------|
+| TestHandoffEngine | 8+ | create, accept, checkpoint, escalation, context freeze |
+| TestConversationCherryPick | 6+ | full pick, range pick, decisions, to_facts |
+| TestVerificationEngine | 5+ | verify fact, verify conv, batch, threshold, no-llm fallback |
+| TestTaskReplayEngine | 6+ | build replay, export bundle, import, compare |
+| TestBundleAPI | 5+ | CRUD, share token, import, visibility |
+
+### Phase 5 Implementation Order
+
+```
+Step 1: Data Model (1 day)
+├── KnowledgeBundle model
+├── HandoffRecord model
+├── Extend Conversation (verification_status)
+├── Extend Message (is_cherry_picked)
+├── Extend Fact status values
+└── DB migration / create_all update
+
+Step 2: Handoff Engine (1.5 days)
+├── HandoffEngine core
+├── HandoffContext dataclass
+├── Handoff API routes
+├── Handoff MCP tools
+└── Tests
+
+Step 3: Conversation Cherry-Pick (1.5 days)
+├── ConversationCherryPickEngine core
+├── Cherry-pick API routes
+├── Cherry-pick MCP tools
+└── Tests
+
+Step 4: Verification Engine (1 day)
+├── VerificationEngine (builds on ScoringEngine)
+├── Integration with merge flow
+├── Verify API routes + MCP tools
+└── Tests
+
+Step 5: Task Replay & Bundles (1.5 days)
+├── TaskReplayEngine core
+├── KnowledgeBundle CRUD
+├── Export/Import logic
+├── Bundle API routes + MCP tools
+└── Tests
+
+Step 6: Dashboard Task View (1.5 days)
+├── TaskList + TaskDetail
+├── HandoffTimeline
+├── CherryPickPanel
+├── BundleManager
+└── taskStore.ts
+
+Step 7: Integration & E2E Test (1 day)
+├── Full flow: create task → handoff → cherry-pick → verify → bundle → share
+├── Hook integration (auto-checkpoint on session end)
+└── Documentation update
+```
+
+**Total estimate: ~9 days of focused work.**
+
+---
+
 ## v0.1 Public Launch Roadmap
 
 ### Release Goals
