@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+
+from day1.logging_config import setup_logging
+
+setup_logging()
+logger = logging.getLogger(__name__)
 
 from day1.api.routes import (
     analytics,
@@ -27,6 +33,7 @@ from day1.db.engine import init_db
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize database on startup."""
+    logger.info("Day1 API starting up")
     await init_db()
     # Ensure main branch
     from day1.core.branch_manager import BranchManager

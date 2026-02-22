@@ -6,6 +6,10 @@ import asyncio
 import json
 import logging
 
+from day1.logging_config import setup_logging
+
+setup_logging()
+
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
@@ -76,5 +80,4 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
     asyncio.run(main())

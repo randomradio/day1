@@ -17,6 +17,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from day1.logging_config import setup_logging
+
 
 def _project_root() -> Path:
     """Locate the project root (directory containing pyproject.toml)."""
@@ -87,11 +89,14 @@ Commands:
 
 Environment:
   BM_DATABASE_URL   MatrixOne connection string (see .env.example)
+  BM_LOG_LEVEL      DEBUG (default) | INFO | WARNING | ERROR
+  BM_LOG_FORMAT     text (default) | json
 """
 
 
 def main() -> None:
     """CLI entry point dispatching to sub-commands."""
+    setup_logging()
     args = sys.argv[1:]
     command = args[0] if args else "help"
 

@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
 
+    # Logging
+    log_level: str = "DEBUG"  # DEBUG | INFO | WARNING | ERROR
+    log_format: str = "text"  # "text" | "json"
+
     # Branch defaults
     default_branch: str = "main"
 
