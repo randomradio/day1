@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
 
+    # Security
+    api_key: str = ""  # Empty = open access (dev mode)
+    cors_origins: list[str] = ["*"]  # Restrict in production
+    rate_limit: int = 0  # Requests per minute per IP (0 = disabled)
+
     # Logging
     log_level: str = "DEBUG"  # DEBUG | INFO | WARNING | ERROR
     log_format: str = "text"  # "text" | "json"

@@ -373,12 +373,12 @@ Ship a usable product that demonstrates Day1's unique value:
 
 | # | Item | Description | Status |
 |---|------|-------------|--------|
-| 1 | Docker Compose | Single `docker compose up` for FastAPI + MatrixOne + dashboard | Planned |
-| 2 | Auto-create tables | `create_all` on startup (no Alembic needed for v0.1) | Planned |
-| 3 | End-to-end smoke test | Prove full pipeline: write → search → fork → replay → diff → score | Planned |
-| 4 | README quickstart | Install, configure, first conversation in 5 minutes | Planned |
-| 5 | API key auth | Simple bearer token auth for API + MCP | Planned |
-| 6 | CORS + rate limiting | Basic security for exposed API | Planned |
+| 1 | Docker Compose | Single `docker compose up` for FastAPI + MatrixOne + dashboard | **Done** |
+| 2 | Auto-create tables | `create_all` on startup (no Alembic needed for v0.1) | **Done** |
+| 3 | End-to-end smoke test | Prove full pipeline: write → search → fork → replay → diff → score | **Done** (`scripts/smoke_test.sh`) |
+| 4 | README quickstart | Install, configure, first conversation in 5 minutes | **Done** |
+| 5 | API key auth | Simple bearer token auth for API + MCP | **Done** (`BM_API_KEY`) |
+| 6 | CORS + rate limiting | Basic security for exposed API | **Done** (`BM_CORS_ORIGINS`, `BM_RATE_LIMIT`) |
 
 ### Launch Differentiators (What We Demo)
 

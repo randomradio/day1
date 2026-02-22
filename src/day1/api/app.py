@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import logging
+import time
+from collections import defaultdict
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from day1.config import settings
 from day1.logging_config import setup_logging
 
 setup_logging()
@@ -43,6 +49,7 @@ async def lifespan(app: FastAPI):
         mgr = BranchManager(session)
         await mgr.ensure_main_branch()
         break
+    logger.info("Day1 API ready — %d routes loaded", len(app.routes))
     yield
 
 
@@ -53,20 +60,79 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+# ── CORS ──────────────────────────────────────────────────────────
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ── Rate Limiting (in-memory, per-IP) ─────────────────────────────
+_rate_buckets: dict[str, list[float]] = defaultdict(list)
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """Simple sliding-window rate limiter.  Disabled when rate_limit=0."""
+    if settings.rate_limit <= 0 or request.url.path == "/health":
+        return await call_next(request)
+
+    client_ip = request.client.host if request.client else "unknown"
+    now = time.time()
+    window = 60.0
+
+    bucket = _rate_buckets[client_ip]
+    _rate_buckets[client_ip] = [t for t in bucket if now - t < window]
+
+    if len(_rate_buckets[client_ip]) >= settings.rate_limit:
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Too many requests. Try again later."},
+        )
+
+    _rate_buckets[client_ip].append(now)
+    return await call_next(request)
+
+
+# ── API Key Authentication ────────────────────────────────────────
+_bearer_scheme = HTTPBearer(auto_error=False)
+
+
+async def verify_api_key(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+) -> None:
+    """Verify Bearer token.  Disabled when BM_API_KEY is empty."""
+    if not settings.api_key:
+        return
+    if credentials is None or credentials.credentials != settings.api_key:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing API key",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+# ── Routers ───────────────────────────────────────────────────────
+_auth = [Depends(verify_api_key)]
+
 # Search and message-search routes must come before parameterized routes
-app.include_router(search.router, prefix="/api/v1", tags=["search"])
-app.include_router(messages.router, prefix="/api/v1", tags=["messages"])
-app.include_router(conversations.router, prefix="/api/v1", tags=["conversations"])
-app.include_router(tasks.router, prefix="/api/v1", tags=["tasks"])
-app.include_router(facts.router, prefix="/api/v1", tags=["facts"])
-app.include_router(observations.router, prefix="/api/v1", tags=["observations"])
-app.include_router(relations.router, prefix="/api/v1", tags=["relations"])
-app.include_router(branches.router, prefix="/api/v1", tags=["branches"])
-app.include_router(sessions.router, prefix="/api/v1", tags=["sessions"])
-app.include_router(snapshots.router, prefix="/api/v1", tags=["snapshots"])
-app.include_router(replays.router, prefix="/api/v1", tags=["replays"])
-app.include_router(analytics.router, prefix="/api/v1", tags=["analytics"])
-app.include_router(scores.router, prefix="/api/v1", tags=["scores"])
+app.include_router(search.router, prefix="/api/v1", tags=["search"], dependencies=_auth)
+app.include_router(messages.router, prefix="/api/v1", tags=["messages"], dependencies=_auth)
+app.include_router(conversations.router, prefix="/api/v1", tags=["conversations"], dependencies=_auth)
+app.include_router(tasks.router, prefix="/api/v1", tags=["tasks"], dependencies=_auth)
+app.include_router(facts.router, prefix="/api/v1", tags=["facts"], dependencies=_auth)
+app.include_router(observations.router, prefix="/api/v1", tags=["observations"], dependencies=_auth)
+app.include_router(relations.router, prefix="/api/v1", tags=["relations"], dependencies=_auth)
+app.include_router(branches.router, prefix="/api/v1", tags=["branches"], dependencies=_auth)
+app.include_router(sessions.router, prefix="/api/v1", tags=["sessions"], dependencies=_auth)
+app.include_router(snapshots.router, prefix="/api/v1", tags=["snapshots"], dependencies=_auth)
+app.include_router(replays.router, prefix="/api/v1", tags=["replays"], dependencies=_auth)
+app.include_router(analytics.router, prefix="/api/v1", tags=["analytics"], dependencies=_auth)
+app.include_router(scores.router, prefix="/api/v1", tags=["scores"], dependencies=_auth)
 
 
 @app.get("/health")

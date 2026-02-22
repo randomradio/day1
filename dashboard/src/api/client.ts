@@ -22,8 +22,20 @@ import type {
 
 const API = '/api/v1';
 
+// Read API key from query param ?key= or localStorage
+function getApiKey(): string | null {
+  const params = new URLSearchParams(window.location.search);
+  const key = params.get('key') || localStorage.getItem('day1_api_key');
+  if (key) localStorage.setItem('day1_api_key', key);
+  return key;
+}
+
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
-  const resp = await fetch(url, init);
+  const headers = new Headers(init?.headers);
+  const apiKey = getApiKey();
+  if (apiKey) headers.set('Authorization', `Bearer ${apiKey}`);
+
+  const resp = await fetch(url, { ...init, headers });
   if (!resp.ok) {
     const body = await resp.text();
     throw new Error(`${resp.status}: ${body}`);
