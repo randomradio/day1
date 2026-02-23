@@ -3,7 +3,6 @@ import type {
   AnalyticsOverview,
   Conversation,
   Message,
-  ReplayResult,
   ScoreEntry,
   ScoreSummary,
   SemanticDiff,

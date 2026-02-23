@@ -17,11 +17,11 @@ function Bar({ value, max = 1, color }: { value: number; max?: number; color: st
 }
 
 export default function SemanticDiffView() {
-  const { semanticDiff, loading } = useConversationStore();
+  const { semanticDiff } = useConversationStore();
 
   if (!semanticDiff) return null;
 
-  const { summary, action_diff, reasoning_diff, outcome_diff, divergence_point } = semanticDiff;
+  const { summary, action_diff, outcome_diff, divergence_point } = semanticDiff;
 
   return (
     <div className="bg-gray-800 rounded-lg p-3 space-y-3">
