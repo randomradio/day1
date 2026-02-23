@@ -13,12 +13,8 @@ services:
         max-size: "20m"
     environment:
       - MYSQL_ROOT_PASSWORD=day1
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-P", "6001", "-u", "root", "-pday1"]
-      interval: 10s
-      timeout: 5s
-      start_period: 30s
-      retries: 10
+    # No healthcheck - MatrixOne takes time to start and is available when port 6001 is open
+    # API service waits for port to be available
 
   # ── FastAPI backend ───────────────────────────────────────
   api:
@@ -34,8 +30,7 @@ services:
       - BM_DATABASE_URL=mysql+aiomysql://root:day1@matrixone:6001/day1
       - BM_HOST=0.0.0.0
     depends_on:
-      matrixone:
-        condition: service_healthy
+      - matrixone
     restart: unless-stopped
 
   # ── Nginx: serves dashboard + proxies /api ────────────────
