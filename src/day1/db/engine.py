@@ -43,7 +43,36 @@ _session_factory = async_sessionmaker(
 
 
 async def init_db() -> None:
-    """Create all tables and MatrixOne fulltext indexes."""
+    """Create database (if needed) and all tables with MatrixOne fulltext indexes."""
+    # First, connect without specifying a database to create 'day1' database
+    db_url = settings.database_url
+    needs_db_creation = db_url.endswith('/mo_catalog') or db_url.endswith('/sys') or not any(
+        f'/{name}' in db_url for name in ('day1', 'branchedmind')
+    )
+
+    if needs_db_creation:
+        # Create connection to server and create day1 database
+        from sqlalchemy.ext.asyncio import create_async_engine
+        server_url = db_url.rsplit('/', 1)[0] + '/mo_catalog'
+        engine = create_async_engine(server_url, **{"echo": False, "future": True})
+
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text("CREATE DATABASE IF NOT EXISTS day1"))
+                logger.info("Created 'day1' database")
+            except sa_exc.DatabaseError as e:
+                logger.debug("Database may already exist: %s", e)
+        await engine.dispose()
+
+    # Now connect to the actual database and create tables
+    target_url = db_url.rsplit('/', 1)[0] + '/day1'
+    engine = create_async_engine(target_url, **{"echo": False, "future": True})
+    global _engine, _session_factory
+    _engine = engine
+    _session_factory = async_sessionmaker(
+        _engine, class_=AsyncSession, expire_on_commit=False
+    )
+
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 

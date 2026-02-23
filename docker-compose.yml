@@ -22,12 +22,13 @@ services:
       context: .
       target: api
     ports:
-      - "8000:8000"
+      - "9903:8000"
     env_file:
       - .env
     environment:
       # Override DB URL to point to the local MatrixOne container
-      - BM_DATABASE_URL=mysql+aiomysql://root:day1@matrixone:6001/day1
+      # MatrixOne 2.0 default: root/111, use 'mo_catalog' as default db
+      - BM_DATABASE_URL=mysql+aiomysql://root:111@matrixone:6001/mo_catalog
       - BM_HOST=0.0.0.0
     depends_on:
       - matrixone
@@ -39,7 +40,7 @@ services:
       context: .
       target: dashboard
     ports:
-      - "3000:80"
+      - "9904:80"
     depends_on:
       - api
     restart: unless-stopped
