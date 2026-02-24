@@ -1,5 +1,8 @@
+import { useState } from 'react';
 import { useConversationStore } from '../stores/conversationStore';
+import { useBranchStore } from '../stores/branchStore';
 import { useVisiblePolling } from '../hooks/usePolling';
+import { api } from '../api/client';
 
 const ROLE_STYLES: Record<string, { bg: string; label: string; text: string }> = {
   user: { bg: 'bg-blue-50', label: 'User', text: 'text-blue-700' },
@@ -16,9 +19,27 @@ function getRoleStyle(role: string) {
 export default function ConversationThread() {
   const { selectedConversation, messages, selectedMessage, scores, evaluateConversation, loading, setSelectedMessage, refreshMessages, pollingEnabled } =
     useConversationStore();
+  const { branches } = useBranchStore();
+  const [cherryPickTarget, setCherryPickTarget] = useState('');
+  const [cherryPicking, setCherryPicking] = useState(false);
 
   // Poll messages for selected conversation every 5 seconds
   useVisiblePolling(refreshMessages, 5000, pollingEnabled && selectedConversation !== null);
+
+  const handleCherryPick = async () => {
+    if (!selectedConversation || !cherryPickTarget) return;
+    setCherryPicking(true);
+    try {
+      await api.cherryPickConversation(selectedConversation.id, {
+        target_branch: cherryPickTarget,
+      });
+      setCherryPickTarget('');
+    } catch (e) {
+      console.error('Cherry-pick failed:', e);
+    } finally {
+      setCherryPicking(false);
+    }
+  };
 
   if (!selectedConversation) {
     return (
@@ -43,15 +64,46 @@ export default function ConversationThread() {
             <span>{conv.total_tokens.toLocaleString()} tokens</span>
             {conv.model && <span>{conv.model}</span>}
             <span className="text-gray-400">{conv.id.slice(0, 8)}</span>
+            {conv.branch_name && (
+              <span className="text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
+                {conv.branch_name}
+              </span>
+            )}
           </div>
         </div>
-        <button
-          onClick={() => evaluateConversation(conv.id)}
-          disabled={loading}
-          className="bg-purple-600 text-white text-xs px-3 py-1 rounded hover:bg-purple-700 disabled:opacity-50 shadow-sm"
-        >
-          Evaluate
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Cherry-pick controls */}
+          <select
+            value={cherryPickTarget}
+            onChange={(e) => setCherryPickTarget(e.target.value)}
+            className="bg-white text-gray-800 text-xs px-2 py-1 rounded border border-gray-300 focus:border-blue-500 focus:outline-none"
+          >
+            <option value="">Cherry-pick to...</option>
+            {branches
+              .filter((b) => b.branch_name !== conv.branch_name)
+              .map((b) => (
+                <option key={b.branch_name} value={b.branch_name}>
+                  {b.branch_name}
+                </option>
+              ))}
+          </select>
+          {cherryPickTarget && (
+            <button
+              onClick={handleCherryPick}
+              disabled={cherryPicking}
+              className="bg-indigo-600 text-white text-xs px-3 py-1 rounded hover:bg-indigo-700 disabled:opacity-50 shadow-sm"
+            >
+              {cherryPicking ? 'Copying...' : 'Pick'}
+            </button>
+          )}
+          <button
+            onClick={() => evaluateConversation(conv.id)}
+            disabled={loading}
+            className="bg-purple-600 text-white text-xs px-3 py-1 rounded hover:bg-purple-700 disabled:opacity-50 shadow-sm"
+          >
+            Evaluate
+          </button>
+        </div>
       </div>
 
       {/* Scores bar */}

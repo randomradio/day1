@@ -12,8 +12,10 @@ from day1.core.embedding import cosine_similarity, vecf32_to_embedding
 from day1.core.exceptions import BranchNotFoundError
 from day1.db.models import (
     BranchRegistry,
+    Conversation,
     Fact,
     MergeHistory,
+    Message,
     Observation,
     Relation,
 )
@@ -27,11 +29,15 @@ class BranchDiff:
         new_facts: list[Fact],
         new_relations: list[Relation],
         new_observations: list[Observation],
+        new_conversations: list[Conversation],
+        new_messages: list[Message],
         conflicts: list[dict],
     ) -> None:
         self.new_facts = new_facts
         self.new_relations = new_relations
         self.new_observations = new_observations
+        self.new_conversations = new_conversations
+        self.new_messages = new_messages
         self.conflicts = conflicts
 
     def to_dict(self) -> dict:
@@ -53,6 +59,15 @@ class BranchDiff:
                 {"id": o.id, "summary": o.summary, "type": o.observation_type}
                 for o in self.new_observations
             ],
+            "new_conversations": [
+                {
+                    "id": c.id,
+                    "title": c.title,
+                    "message_count": c.message_count,
+                }
+                for c in self.new_conversations
+            ],
+            "new_messages_count": len(self.new_messages),
             "conflicts": self.conflicts,
         }
 
@@ -125,10 +140,23 @@ class MergeEngine:
         target_obs_ids = {o.id for o in await self._get_observations(target_branch)}
         new_observations = [o for o in source_obs if o.id not in target_obs_ids]
 
+        # Find new conversations (by ID — conversations don't have semantic conflicts)
+        source_convs = await self._get_conversations(source_branch)
+        target_conv_ids = {c.id for c in await self._get_conversations(target_branch)}
+        new_conversations = [c for c in source_convs if c.id not in target_conv_ids]
+
+        # Collect messages from new conversations
+        new_messages: list[Message] = []
+        for conv in new_conversations:
+            msgs = await self._get_conversation_messages(conv.id)
+            new_messages.extend(msgs)
+
         return BranchDiff(
             new_facts=new_facts,
             new_relations=new_relations,
             new_observations=new_observations,
+            new_conversations=new_conversations,
+            new_messages=new_messages,
             conflicts=conflicts,
         )
 
@@ -228,6 +256,51 @@ class MergeEngine:
                 )
                 self._session.add(new_obs)
                 merged_count += 1
+                continue
+
+            # Try conversations (copies conversation + all its messages)
+            result = await self._session.execute(
+                select(Conversation).where(
+                    Conversation.id == item_id, Conversation.branch_name == source
+                )
+            )
+            conv = result.scalar_one_or_none()
+            if conv:
+                new_conv = Conversation(
+                    session_id=conv.session_id,
+                    agent_id=conv.agent_id,
+                    task_id=conv.task_id,
+                    branch_name=target,
+                    title=conv.title,
+                    parent_conversation_id=conv.parent_conversation_id,
+                    status=conv.status,
+                    message_count=conv.message_count,
+                    total_tokens=conv.total_tokens,
+                    model=conv.model,
+                    metadata_json=conv.metadata_json,
+                )
+                self._session.add(new_conv)
+                await self._session.flush()
+                # Copy all messages for this conversation
+                msgs = await self._get_conversation_messages(conv.id)
+                for msg in msgs:
+                    new_msg = Message(
+                        conversation_id=new_conv.id,
+                        session_id=msg.session_id,
+                        agent_id=msg.agent_id,
+                        role=msg.role,
+                        content=msg.content,
+                        thinking=msg.thinking,
+                        tool_calls_json=msg.tool_calls_json,
+                        token_count=msg.token_count,
+                        model=msg.model,
+                        sequence_num=msg.sequence_num,
+                        embedding=msg.embedding,
+                        branch_name=target,
+                        metadata_json=msg.metadata_json,
+                    )
+                    self._session.add(new_msg)
+                merged_count += 1
 
         # Record merge history
         merge_record = MergeHistory(
@@ -303,6 +376,46 @@ class MergeEngine:
             self._session.add(new_obs)
             merged_ids.append(obs.id)
 
+        # Merge new conversations + their messages
+        conv_id_map: dict[str, str] = {}
+        for conv in diff.new_conversations:
+            new_conv = Conversation(
+                session_id=conv.session_id,
+                agent_id=conv.agent_id,
+                task_id=conv.task_id,
+                branch_name=target,
+                title=conv.title,
+                parent_conversation_id=conv.parent_conversation_id,
+                status=conv.status,
+                message_count=conv.message_count,
+                total_tokens=conv.total_tokens,
+                model=conv.model,
+                metadata_json=conv.metadata_json,
+            )
+            self._session.add(new_conv)
+            await self._session.flush()
+            conv_id_map[conv.id] = new_conv.id
+            merged_ids.append(conv.id)
+
+        for msg in diff.new_messages:
+            new_conv_id = conv_id_map.get(msg.conversation_id, msg.conversation_id)
+            new_msg = Message(
+                conversation_id=new_conv_id,
+                session_id=msg.session_id,
+                agent_id=msg.agent_id,
+                role=msg.role,
+                content=msg.content,
+                thinking=msg.thinking,
+                tool_calls_json=msg.tool_calls_json,
+                token_count=msg.token_count,
+                model=msg.model,
+                sequence_num=msg.sequence_num,
+                embedding=msg.embedding,
+                branch_name=target,
+                metadata_json=msg.metadata_json,
+            )
+            self._session.add(new_msg)
+
         # Update branch status
         await self._session.execute(
             update(BranchRegistry)
@@ -364,6 +477,46 @@ class MergeEngine:
             self._session.add(new_rel)
             merged_ids.append(rel.id)
 
+        # Squash conversations + messages
+        conv_id_map: dict[str, str] = {}
+        for conv in diff.new_conversations:
+            new_conv = Conversation(
+                session_id=conv.session_id,
+                agent_id=conv.agent_id,
+                task_id=conv.task_id,
+                branch_name=target,
+                title=conv.title,
+                parent_conversation_id=conv.parent_conversation_id,
+                status=conv.status,
+                message_count=conv.message_count,
+                total_tokens=conv.total_tokens,
+                model=conv.model,
+                metadata_json=conv.metadata_json,
+            )
+            self._session.add(new_conv)
+            await self._session.flush()
+            conv_id_map[conv.id] = new_conv.id
+            merged_ids.append(conv.id)
+
+        for msg in diff.new_messages:
+            new_conv_id = conv_id_map.get(msg.conversation_id, msg.conversation_id)
+            new_msg = Message(
+                conversation_id=new_conv_id,
+                session_id=msg.session_id,
+                agent_id=msg.agent_id,
+                role=msg.role,
+                content=msg.content,
+                thinking=msg.thinking,
+                tool_calls_json=msg.tool_calls_json,
+                token_count=msg.token_count,
+                model=msg.model,
+                sequence_num=msg.sequence_num,
+                embedding=msg.embedding,
+                branch_name=target,
+                metadata_json=msg.metadata_json,
+            )
+            self._session.add(new_msg)
+
         await self._session.execute(
             update(BranchRegistry)
             .where(BranchRegistry.branch_name == source)
@@ -419,6 +572,20 @@ class MergeEngine:
     async def _get_observations(self, branch_name: str) -> list[Observation]:
         result = await self._session.execute(
             select(Observation).where(Observation.branch_name == branch_name)
+        )
+        return list(result.scalars().all())
+
+    async def _get_conversations(self, branch_name: str) -> list[Conversation]:
+        result = await self._session.execute(
+            select(Conversation).where(Conversation.branch_name == branch_name)
+        )
+        return list(result.scalars().all())
+
+    async def _get_conversation_messages(self, conversation_id: str) -> list[Message]:
+        result = await self._session.execute(
+            select(Message)
+            .where(Message.conversation_id == conversation_id)
+            .order_by(Message.sequence_num.asc())
         )
         return list(result.scalars().all())
 

@@ -38,6 +38,7 @@ if (typeof window !== 'undefined') {
 interface ConversationStore {
   // State
   tab: Tab;
+  branchFilter: string | null;
   conversations: Conversation[];
   selectedConversation: Conversation | null;
   messages: Message[];
@@ -54,9 +55,10 @@ interface ConversationStore {
 
   // Actions
   setTab: (tab: Tab, updateUrl?: boolean) => void;
+  setBranchFilter: (branch: string | null) => void;
   setSelectedMessage: (message: Message | null) => void;
   setPollingEnabled: (enabled: boolean) => void;
-  fetchConversations: (params?: { session_id?: string; status?: string; limit?: number }) => Promise<void>;
+  fetchConversations: (params?: { session_id?: string; branch?: string; status?: string; limit?: number }) => Promise<void>;
   refreshConversations: () => Promise<void>; // Silent fetch for polling
   selectConversation: (id: string) => Promise<void>;
   fetchMessages: (conversationId: string) => Promise<void>;
@@ -75,6 +77,7 @@ interface ConversationStore {
 
 export const useConversationStore = create<ConversationStore>((set, get) => ({
   tab: getTabFromHash(), // Initialize from URL hash
+  branchFilter: null,
   conversations: [],
   selectedConversation: null,
   messages: [],
@@ -96,6 +99,8 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     }
   },
 
+  setBranchFilter: (branch) => set({ branchFilter: branch }),
+
   setSelectedMessage: (message) => set({ selectedMessage: message }),
 
   setPollingEnabled: (enabled) => set({ pollingEnabled: enabled }),
@@ -115,7 +120,8 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   refreshConversations: async () => {
     if (!get().pollingEnabled) return;
     try {
-      const data = await api.listConversations({ limit: 50 });
+      const branch = get().branchFilter;
+      const data = await api.listConversations({ limit: 50, branch: branch || undefined });
       set({ conversations: data.conversations });
     } catch (e) {
       // Silent fail for polling

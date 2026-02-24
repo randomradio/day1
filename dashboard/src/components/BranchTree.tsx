@@ -61,7 +61,10 @@ export default function BranchTree() {
           label: (
             <div className="text-sm font-medium px-2 py-1">
               <div>{b.branch_name}</div>
-              <div className="text-xs opacity-70">{b.status}</div>
+              <div className="text-xs opacity-70">
+                {b.status}
+                {b.conversation_count != null && ` \u00b7 ${b.conversation_count} convs`}
+              </div>
             </div>
           ),
         },

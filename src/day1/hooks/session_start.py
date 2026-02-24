@@ -37,6 +37,7 @@ async def handler() -> dict:
     # Check for task/agent context from environment
     task_id = os.environ.get("BM_TASK_ID")
     agent_id = os.environ.get("BM_AGENT_ID")
+    active_branch = os.environ.get("BM_BRANCH") or "main"
 
     # Register this session (link to parent if BM_PARENT_SESSION is set)
     sid = get_session_id()
@@ -46,7 +47,7 @@ async def handler() -> dict:
     if existing is None:
         await session_mgr.create_session(
             session_id=sid,
-            branch_name="main",
+            branch_name=active_branch,
             project_path=get_project_path(),
             parent_session=parent_session,
             task_id=task_id,
@@ -61,6 +62,7 @@ async def handler() -> dict:
             session_id=sid,
             agent_id=agent_id,
             task_id=task_id,
+            branch_name=active_branch,
         )
 
     context_parts: list[str] = []
@@ -171,7 +173,7 @@ async def handler() -> dict:
 
     else:
         # Standard context (no task): recent facts + sessions
-        facts = await fact_engine.list_facts(branch_name="main", limit=15)
+        facts = await fact_engine.list_facts(branch_name=active_branch, limit=15)
         if facts:
             context_parts.append("## Project Memory (Key Facts)")
             for f in facts:
@@ -186,6 +188,16 @@ async def handler() -> dict:
                 ts = s.started_at.isoformat() if s.started_at else "unknown"
                 summary = (s.summary or "No summary")[:200]
                 context_parts.append(f"- {ts}: {summary}")
+
+    # Recent conversations on the active branch
+    recent_convs = await conv_engine.list_conversations(
+        branch_name=active_branch, limit=3
+    )
+    if recent_convs:
+        context_parts.append(f"\n## Recent Conversations on '{active_branch}'")
+        for c in recent_convs:
+            title = c.title or "Untitled"
+            context_parts.append(f"- {title} ({c.message_count} messages)")
 
     # Active branches (always shown)
     branches = await branch_mgr.list_branches(status="active")

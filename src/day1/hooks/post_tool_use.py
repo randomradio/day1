@@ -33,6 +33,7 @@ async def handler(input_data: dict) -> dict:
         # Read task/agent context from environment
         task_id = os.environ.get("BM_TASK_ID")
         agent_id = os.environ.get("BM_AGENT_ID")
+        active_branch = os.environ.get("BM_BRANCH") or "main"
 
         # Compress observation: extract key information
         summary = _compress_observation(tool_name, tool_input, tool_response)
@@ -50,6 +51,7 @@ async def handler(input_data: dict) -> dict:
                 summary=summary,
                 raw_input=str(tool_input)[:2000],
                 raw_output=str(tool_response)[:2000],
+                branch_name=active_branch,
                 task_id=task_id,
                 agent_id=agent_id,
             )

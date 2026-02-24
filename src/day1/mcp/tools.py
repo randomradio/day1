@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from day1.core.analytics_engine import AnalyticsEngine
 from day1.core.branch_manager import BranchManager
 from day1.core.consolidation_engine import ConsolidationEngine
+from day1.core.conversation_cherry_pick import ConversationCherryPick
 from day1.core.conversation_engine import ConversationEngine
 from day1.core.embedding import get_embedding_provider
 from day1.core.fact_engine import FactEngine
@@ -720,6 +721,80 @@ TOOL_DEFINITIONS: list[Tool] = [
             "required": ["conversation_id", "message_id"],
         },
     ),
+    # === Cherry-Pick ===
+    Tool(
+        name="memory_cherry_pick_conversation",
+        description=(
+            "Cherry-pick a conversation (or message range)"
+            " to another branch. Copies the conversation and"
+            " its messages to the target branch."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "conversation_id": {
+                    "type": "string",
+                    "description": "Source conversation to cherry-pick",
+                },
+                "target_branch": {
+                    "type": "string",
+                    "description": "Branch to copy into",
+                },
+                "from_sequence": {
+                    "type": "integer",
+                    "description": (
+                        "Start of message range (optional —"
+                        " omit to copy entire conversation)"
+                    ),
+                },
+                "to_sequence": {
+                    "type": "integer",
+                    "description": "End of message range (inclusive)",
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Title for the extracted conversation (range mode only)",
+                },
+            },
+            "required": ["conversation_id", "target_branch"],
+        },
+    ),
+    Tool(
+        name="memory_branch_create_curated",
+        description=(
+            "Create a curated branch from selected conversations"
+            " and facts. Builds a starter-kit branch for future"
+            " agents with only the context that matters."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "branch_name": {
+                    "type": "string",
+                    "description": "Name for the new curated branch",
+                },
+                "parent_branch": {
+                    "type": "string",
+                    "description": "Parent branch (default: main)",
+                },
+                "conversation_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Conversations to include (with all messages)",
+                },
+                "fact_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Facts to include",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Branch description",
+                },
+            },
+            "required": ["branch_name"],
+        },
+    ),
     # === Session Context Handoff ===
     Tool(
         name="memory_session_context",
@@ -1382,6 +1457,35 @@ async def handle_tool_call(
             "message_count": forked.message_count,
             "status": forked.status,
         }
+
+    # === Cherry-Pick ===
+    elif name == "memory_cherry_pick_conversation":
+        cherry = ConversationCherryPick(session)
+        from_seq = arguments.get("from_sequence")
+        to_seq = arguments.get("to_sequence")
+        if from_seq is not None and to_seq is not None:
+            return await cherry.cherry_pick_message_range(
+                conversation_id=arguments["conversation_id"],
+                from_sequence=from_seq,
+                to_sequence=to_seq,
+                target_branch=arguments["target_branch"],
+                title=arguments.get("title"),
+            )
+        else:
+            return await cherry.cherry_pick_conversation(
+                conversation_id=arguments["conversation_id"],
+                target_branch=arguments["target_branch"],
+            )
+
+    elif name == "memory_branch_create_curated":
+        cherry = ConversationCherryPick(session)
+        return await cherry.cherry_pick_to_curated_branch(
+            branch_name=arguments["branch_name"],
+            parent_branch=arguments.get("parent_branch", "main"),
+            conversation_ids=arguments.get("conversation_ids"),
+            fact_ids=arguments.get("fact_ids"),
+            description=arguments.get("description"),
+        )
 
     # === Session Context Handoff ===
     elif name == "memory_session_context":

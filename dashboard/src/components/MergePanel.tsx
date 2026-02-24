@@ -1,5 +1,39 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useBranchStore } from '../stores/branchStore';
+
+function TableSummary({ diffs }: { diffs: Array<{ _table: string; [key: string]: unknown }> }) {
+  const tableCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const d of diffs) {
+      const table = String(d._table || 'unknown');
+      counts[table] = (counts[table] || 0) + 1;
+    }
+    return counts;
+  }, [diffs]);
+
+  if (diffs.length === 0) return null;
+
+  const TABLE_LABELS: Record<string, string> = {
+    facts: 'Facts',
+    relations: 'Relations',
+    observations: 'Observations',
+    conversations: 'Conversations',
+    messages: 'Messages',
+  };
+
+  return (
+    <div className="mb-3 flex flex-wrap gap-2">
+      {Object.entries(tableCounts).map(([table, count]) => (
+        <span
+          key={table}
+          className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700"
+        >
+          {TABLE_LABELS[table] || table}: <span className="font-mono font-medium">{count}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
 
 export default function MergePanel() {
   const { branches, activeBranch, diffs, fetchDiff, mergeBranch, loading } =
@@ -34,7 +68,10 @@ export default function MergePanel() {
         Merge: {activeBranch} → {target}
       </h3>
 
-      {/* Diff summary */}
+      {/* Per-table summary */}
+      <TableSummary diffs={diffs} />
+
+      {/* Diff details */}
       <div className="mb-3">
         <span className="text-xs text-gray-500">
           {diffs.length} changes detected

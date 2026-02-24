@@ -1,9 +1,13 @@
 import type {
   AnalyticsOverview,
   BranchListResponse,
+  CherryPickRequest,
+  CherryPickResult,
   Conversation,
   ConversationDiff,
   ConversationListResponse,
+  CuratedBranchRequest,
+  CuratedBranchResult,
   DiffResponse,
   Fact,
   MergeResult,
@@ -128,6 +132,7 @@ export const api = {
     session_id?: string;
     agent_id?: string;
     task_id?: string;
+    branch?: string;
     status?: string;
     limit?: number;
   }) => {
@@ -135,6 +140,7 @@ export const api = {
     if (params?.session_id) qs.set('session_id', params.session_id);
     if (params?.agent_id) qs.set('agent_id', params.agent_id);
     if (params?.task_id) qs.set('task_id', params.task_id);
+    if (params?.branch) qs.set('branch', params.branch);
     if (params?.status) qs.set('status', params.status);
     if (params?.limit) qs.set('limit', String(params.limit));
     const q = qs.toString();
@@ -162,6 +168,20 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message_id: messageId, title, branch }),
+    }),
+
+  cherryPickConversation: (id: string, data: CherryPickRequest) =>
+    fetchJSON<CherryPickResult>(`${API}/conversations/${id}/cherry-pick`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  createCuratedBranch: (data: CuratedBranchRequest) =>
+    fetchJSON<CuratedBranchResult>(`${API}/branches/curated`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
     }),
 
   diffConversations: (a: string, b: string) =>

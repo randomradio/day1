@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from day1.core.branch_manager import BranchManager
+from day1.core.conversation_cherry_pick import ConversationCherryPick
 from day1.core.exceptions import (
     BranchExistsError,
     BranchNotFoundError,
@@ -28,6 +29,14 @@ class MergeRequest(BaseModel):
     target_branch: str = "main"
     items: list[str] | None = None
     conflict: str = "skip"
+
+
+class CuratedBranchRequest(BaseModel):
+    branch_name: str
+    parent_branch: str = "main"
+    conversation_ids: list[str] | None = None
+    fact_ids: list[str] | None = None
+    description: str | None = None
 
 
 @router.post("/branches")
@@ -166,3 +175,25 @@ async def archive_branch(
     except BranchExistsError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"status": "archived", "branch_name": branch_name}
+
+
+@router.post("/branches/curated", status_code=201)
+async def create_curated_branch(
+    body: CuratedBranchRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Create a curated branch from selected conversations and facts."""
+    cherry = ConversationCherryPick(session)
+    try:
+        result = await cherry.cherry_pick_to_curated_branch(
+            branch_name=body.branch_name,
+            parent_branch=body.parent_branch,
+            conversation_ids=body.conversation_ids,
+            fact_ids=body.fact_ids,
+            description=body.description,
+        )
+    except BranchExistsError:
+        raise HTTPException(status_code=409, detail="Branch already exists")
+    except BranchNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return result

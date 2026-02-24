@@ -4,6 +4,37 @@ export interface Branch {
   status: string;
   description?: string;
   forked_at?: string;
+  conversation_count?: number;
+}
+
+export interface CherryPickRequest {
+  target_branch: string;
+  from_sequence?: number;
+  to_sequence?: number;
+  title?: string;
+}
+
+export interface CherryPickResult {
+  conversation_id: string;
+  source_conversation_id: string;
+  target_branch: string;
+  messages_copied: number;
+}
+
+export interface CuratedBranchRequest {
+  branch_name: string;
+  parent_branch?: string;
+  conversation_ids?: string[];
+  fact_ids?: string[];
+  description?: string;
+}
+
+export interface CuratedBranchResult {
+  branch_name: string;
+  parent_branch: string;
+  conversations_copied: number;
+  messages_copied: number;
+  facts_copied: number;
 }
 
 export interface Fact {
