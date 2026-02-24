@@ -1,5 +1,17 @@
 # Unified Conversation + Memory Branching
 
+**Status**: COMPLETED (all phases implemented)
+
+| Phase | Description | Commit | Status |
+|-------|-------------|--------|--------|
+| Phase 0 | Capture-first — embedding never blocks saves | `f12fbff` | Done |
+| Phase 1 | Conversations/messages in BRANCH_TABLES | `804d954` | Done |
+| Phase 2-6 | Merge, cherry-pick, API, hooks, dashboard | `d48a0fd` | Done |
+
+**Next**: See `docs/architecture-decisions.md` for current roadmap.
+
+---
+
 ## Context
 
 Day1 is a git-like memory layer for AI agents. It has two data layers:

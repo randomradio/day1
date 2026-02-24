@@ -168,6 +168,99 @@ Gaps 5 and 6 are addressed by the Phase 1 implementation plan (Branch Topology +
 
 ---
 
+---
+
+## 2026-02-24: Gap Analysis — Current System vs Target State
+
+### Gap Overview
+
+| # | Gap | Severity | Resolution |
+|---|-----|----------|------------|
+| 1 | Embedding resilience not in architecture docs | Low | **Fixed** — architecture.md rewritten (2026-02-24) |
+| 2 | Phase 5 (Curation/Handoff) designed but not implemented | High | Roadmap below |
+| 3 | No roadmap beyond Phase 5 | Medium | Tracked in this doc |
+| 4 | Cost model not documented | Medium | Future — before commercial deployment |
+| 5 | Branch scaling (100+ branches) | High | **Phase 1 target** — Branch Topology Management |
+| 6 | Template system missing | High | **Phase 1 target** — Template Branches |
+
+### Gap 2: Phase 5 — Knowledge Curation & Task Handoff
+
+**Design**: Complete in `docs/phase5-task-handoff-and-curation.md`
+
+Phase 5 contains four major capabilities:
+
+| Capability | Existing Foundation | New Work |
+|-----------|-------------------|----------|
+| **Task Handoff** | TaskEngine, session_start hook context injection | HandoffEngine, handoff_records table, handoff protocol |
+| **Conversation Cherry-Pick** | ConversationCherryPick engine (full, range, curated) | Verification gate (LLM-as-judge on conversations) |
+| **Knowledge Bundles** | ConsolidationEngine (session → agent → task) | KnowledgeBundle model, export/import, share tokens |
+| **Verification Engine** | ScoringEngine (LLM-as-judge on dimensions) | VerificationEngine (fact/conversation verification, batch verify, merge gate) |
+
+**Dependency chain**:
+```
+Verification Engine (extends ScoringEngine pattern)
+    → Conversation Cherry-Pick verification gate
+    → Handoff Protocol (verified facts only in handoff packet)
+    → Knowledge Bundles (only verified items in bundles)
+```
+
+**When to implement**: After Phase 1 (Branch Topology + Templates) is stable. Verification Engine is the foundation — build it first, then Handoff and Bundles.
+
+**Connection to Templates**: Knowledge Bundles and Templates serve different purposes:
+- **Template** = live working branch that new agents fork from (Day1-internal)
+- **Bundle** = portable, serialized knowledge package (export/import across projects)
+- Bundles can be *imported into* templates. Templates can be *exported as* bundles.
+
+### Gap 5: Branch Scaling (100+ branches)
+
+**Problem**: No lifecycle policies, flat visualization, no metadata.
+
+**Solution**: `BranchTopologyEngine` — see Phase 1 implementation plan above.
+
+**Key capabilities**:
+- Hierarchical tree topology (built from parent_branch)
+- Auto-archive policies (inactive days, merged branches, TTL expiry)
+- Branch metadata enrichment (purpose, owner, TTL, tags)
+- Naming convention validation (task/, template/, team/)
+- Per-branch stats (fact/conversation/observation counts)
+
+**Design principle**: Policy enforcement is explicit (`apply_auto_archive()` is an API call), not a background scheduler. Pure memory layer doesn't run its own daemon.
+
+### Gap 6: Template System
+
+**Problem**: No way to package curated knowledge for reuse.
+
+**Solution**: `TemplateEngine` — see Phase 1 implementation plan above.
+
+**Key capabilities**:
+- Template registry (name, version, applicable_task_types, tags)
+- Create from any branch (snapshots via DATA BRANCH fork)
+- Instantiate: fork template → working branch (zero-copy)
+- Version management (v1 → v2 → ..., old versions deprecated)
+- Find applicable template by task type or semantic description
+
+**Evolution path**:
+```
+Repeated agent work → Consolidation → Curated branch → Template creation → Fork for new agents
+                                                              ↑
+                                                    Template update (from new learnings)
+```
+
+---
+
+## Roadmap Summary
+
+```
+Phase 1 (Current)     Phase 2 (Next)              Phase 3 (Future)
+─────────────────     ──────────────────          ──────────────────
+Branch Topology  ──→  Verification Engine    ──→  Cross-Agent Learning
+Template Branches──→  Task Handoff Protocol  ──→  Memory-Driven Routing
+                      Knowledge Bundles      ──→  Agent Knowledge Graph
+                      Batch Replay + Eval         Automated Curation
+```
+
+---
+
 ## Decision Log Format
 
 Future entries should follow this format:

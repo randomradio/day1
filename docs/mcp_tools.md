@@ -220,8 +220,220 @@ tool("memory_time_travel", {
 # Returns: Same as memory_search, but from historical state
 ```
 
+## Task Management
+
+### memory_task_create
+
+Create a multi-agent task with objectives.
+
+```python
+tool("memory_task_create", {
+    "name": str,                   # Required: Task name
+    "description": str | None,    # Optional: Task description
+    "task_type": str | None,      # Optional: Category (e.g., "bug_fix", "feature")
+    "tags": list[str] | None,    # Optional: Tags for discovery
+    "objectives": list[dict] | None,  # Optional: [{description, priority}]
+    "parent_branch": str | None,  # Optional: Parent branch (default "main")
+})
+# Returns: { "task_id": str, "branch_name": str }
+```
+
+### memory_task_join
+
+Join a task as an agent.
+
+```python
+tool("memory_task_join", {
+    "task_id": str,                # Required
+    "agent_id": str,              # Required
+    "role": str | None,           # Optional: "implementer", "reviewer", "tester"
+    "assigned_objectives": list[int] | None,  # Optional: Objective indices
+})
+# Returns: { "branch_name": str, "objectives": [...] }
+```
+
+### memory_task_status
+
+Get task status including agents and objectives.
+
+```python
+tool("memory_task_status", {
+    "task_id": str,               # Required
+})
+# Returns: { "task": {...}, "agents": [...], "objectives": [...] }
+```
+
+### memory_task_update
+
+Update task objective status.
+
+```python
+tool("memory_task_update", {
+    "task_id": str,               # Required
+    "objective_id": int,          # Required: Objective index
+    "status": str,                # Required: "pending", "in_progress", "completed"
+    "agent_id": str | None,       # Optional
+    "notes": str | None,          # Optional
+})
+```
+
+### memory_consolidate
+
+Consolidate observations into candidate facts (session/agent/task level).
+
+```python
+tool("memory_consolidate", {
+    "level": str,                  # Required: "session", "agent", "task"
+    "session_id": str | None,      # Required for "session"
+    "task_id": str | None,         # Required for "agent"/"task"
+    "agent_id": str | None,        # Required for "agent"
+})
+# Returns: { "new_facts": int, "duplicates_merged": int }
+```
+
+### memory_search_task
+
+Search within a task's scope (cross-agent).
+
+```python
+tool("memory_search_task", {
+    "task_id": str,               # Required
+    "query": str,                 # Required
+    "agent_id": str | None,       # Optional: Filter by agent
+    "limit": int | None,          # Optional
+})
+```
+
+### memory_agent_timeline
+
+Get agent's activity timeline.
+
+```python
+tool("memory_agent_timeline", {
+    "agent_id": str,              # Required
+    "limit": int | None,          # Optional
+})
+```
+
+### memory_replay_task_type
+
+Analyze patterns across tasks of same type.
+
+```python
+tool("memory_replay_task_type", {
+    "task_type": str,             # Required
+    "limit": int | None,          # Optional
+})
+```
+
+## Conversation Management
+
+### memory_log_message
+
+Add a message to a conversation.
+
+```python
+tool("memory_log_message", {
+    "conversation_id": str | None,  # Optional: Auto-creates if absent
+    "role": str,                    # Required: "user", "assistant", "system", "tool"
+    "content": str,                 # Required
+    "thinking": str | None,         # Optional: Chain-of-thought
+    "tool_calls": list | None,      # Optional
+    "model": str | None,            # Optional
+    "branch": str | None,           # Optional
+})
+# Returns: { "message_id": str, "conversation_id": str }
+```
+
+### memory_list_conversations
+
+List conversations with filters.
+
+```python
+tool("memory_list_conversations", {
+    "branch": str | None,          # Optional
+    "session_id": str | None,      # Optional
+    "agent_id": str | None,        # Optional
+    "task_id": str | None,         # Optional
+    "limit": int | None,           # Optional
+})
+```
+
+### memory_search_messages
+
+Search across messages.
+
+```python
+tool("memory_search_messages", {
+    "query": str,                  # Required
+    "branch": str | None,         # Optional
+    "conversation_id": str | None, # Optional
+    "role": str | None,           # Optional
+    "limit": int | None,          # Optional
+})
+```
+
+### memory_fork_conversation
+
+Fork a conversation at a message (for replay).
+
+```python
+tool("memory_fork_conversation", {
+    "conversation_id": str,       # Required
+    "fork_at_message_id": str,    # Required
+    "branch": str | None,        # Optional: Target branch
+    "title": str | None,         # Optional
+})
+# Returns: { "forked_conversation_id": str, "messages_copied": int }
+```
+
+### memory_cherry_pick_conversation
+
+Cherry-pick a conversation or message range to another branch.
+
+```python
+tool("memory_cherry_pick_conversation", {
+    "conversation_id": str,       # Required
+    "target_branch": str,         # Required
+    "from_sequence": int | None,  # Optional: Start of range
+    "to_sequence": int | None,    # Optional: End of range
+})
+# Returns: { "new_conversation_id": str, "messages_copied": int }
+```
+
+## Curation
+
+### memory_branch_create_curated
+
+Create a curated branch from selected conversations and facts.
+
+```python
+tool("memory_branch_create_curated", {
+    "branch_name": str,           # Required
+    "parent_branch": str | None,  # Optional (default "main")
+    "conversation_ids": list[str] | None,  # Optional
+    "fact_ids": list[str] | None,          # Optional
+    "description": str | None,    # Optional
+})
+# Returns: { "branch_name": str, "conversations": int, "facts": int }
+```
+
+### memory_session_context
+
+Get full session context (facts, conversations, observations).
+
+```python
+tool("memory_session_context", {
+    "session_id": str,            # Required
+    "message_limit": int | None,  # Optional
+    "fact_limit": int | None,     # Optional
+})
+# Returns: { "session": {...}, "facts": [...], "conversations": [...], "observations": [...] }
+```
+
 ## Implementation File
 
-- **Definition**: `src/mcp/tools/__init__.py`
-- **Registration**: `src/mcp/server.py`
-- **Handler pattern**: Each tool = async function with typed args
+- **Definition & Handlers**: `src/day1/mcp/tools.py` (29 tools)
+- **MCP Server**: `src/day1/mcp/mcp_server.py` (stdio mode)
+- **MCP HTTP Server**: `src/day1/mcp/mcp_server_http.py` (SSE mode)
+- **Handler pattern**: Each tool = async function dispatched via `handle_tool_call()`
