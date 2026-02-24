@@ -9,15 +9,15 @@ export default function ReplayList() {
   }
 
   return (
-    <div className="bg-gray-800 rounded-lg p-3">
-      <span className="text-sm text-gray-400 font-medium">
+    <div className="bg-white rounded-lg p-3 border border-gray-200 shadow-sm">
+      <span className="text-sm text-gray-700 font-medium">
         Replays ({replays.length})
       </span>
       <div className="mt-2 space-y-1">
         {replays.map((r) => (
           <div
             key={r.replay_id}
-            className="flex items-center justify-between text-xs bg-gray-700/30 rounded px-2 py-1.5"
+            className="flex items-center justify-between text-xs bg-gray-50 rounded px-2 py-1.5 border border-gray-100"
           >
             <div className="flex items-center gap-2">
               <span
@@ -25,7 +25,7 @@ export default function ReplayList() {
                   r.status === 'completed' ? 'bg-green-500' : 'bg-amber-500'
                 }`}
               />
-              <span className="text-gray-300 font-mono">
+              <span className="text-gray-700 font-mono">
                 {r.replay_id.slice(0, 8)}
               </span>
               <span className="text-gray-500">{r.message_count} msgs</span>
@@ -36,7 +36,7 @@ export default function ReplayList() {
                   fetchSemanticDiff(r.original_conversation_id, r.replay_id);
                 }
               }}
-              className="text-cyan-500 hover:text-cyan-400"
+              className="text-cyan-600 hover:text-cyan-700"
             >
               Diff
             </button>

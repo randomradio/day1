@@ -1,16 +1,11 @@
 services:
   # ── MatrixOne (local dev database) ────────────────────────
   matrixone:
-    image: matrixorigin/matrixone:2.0.1
+    image: matrixorigin/matrixone:latest
     ports:
       - "6001:6001"
     volumes:
       - mo_data:/mo-data
-    logging:
-      driver: "json-file"
-      options:
-        max-file: "5"
-        max-size: "20m"
     environment:
       - MYSQL_ROOT_PASSWORD=day1
     # No healthcheck - MatrixOne takes time to start and is available when port 6001 is open

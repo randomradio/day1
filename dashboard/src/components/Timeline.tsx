@@ -48,7 +48,7 @@ export default function Timeline() {
       .attr('transform', `translate(0,${height - margin.bottom})`)
       .call(xAxis)
       .selectAll('text')
-      .attr('fill', '#9ca3af');
+      .attr('fill', '#6b7280');
 
     svg
       .selectAll('circle')
@@ -74,30 +74,30 @@ export default function Timeline() {
   };
 
   return (
-    <div className="bg-gray-800 rounded-lg p-3">
+    <div className="bg-white rounded-lg p-3 border border-gray-200 shadow-sm">
       <div className="flex items-center gap-3 mb-2">
-        <span className="text-sm text-gray-400 font-medium">Timeline</span>
+        <span className="text-sm text-gray-600 font-medium">Timeline</span>
         <input
           type="datetime-local"
-          className="bg-gray-700 text-gray-200 text-xs px-2 py-1 rounded border border-gray-600"
+          className="bg-white text-gray-900 text-xs px-2 py-1 rounded border border-gray-300 focus:border-blue-500 focus:outline-none"
           value={sliderValue}
           onChange={(e) => setSliderValue(e.target.value)}
         />
         <button
           onClick={handleTimeTravel}
           disabled={!sliderValue}
-          className="bg-cyan-600 text-white text-xs px-3 py-1 rounded hover:bg-cyan-500 disabled:opacity-50"
+          className="bg-cyan-600 text-white text-xs px-3 py-1 rounded hover:bg-cyan-700 disabled:opacity-50 shadow-sm"
         >
           Time Travel
         </button>
         {timeTravelTs && (
-          <span className="text-xs text-cyan-400">@ {timeTravelTs}</span>
+          <span className="text-xs text-cyan-600 font-medium">@ {timeTravelTs}</span>
         )}
       </div>
       <svg ref={svgRef} className="w-full" height={120} />
       <div className="flex gap-3 mt-1 flex-wrap">
         {Object.entries(CATEGORY_COLORS).map(([cat, color]) => (
-          <span key={cat} className="flex items-center gap-1 text-xs text-gray-400">
+          <span key={cat} className="flex items-center gap-1 text-xs text-gray-500">
             <span
               className="inline-block w-2 h-2 rounded-full"
               style={{ backgroundColor: color }}

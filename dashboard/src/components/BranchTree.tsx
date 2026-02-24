@@ -69,8 +69,9 @@ export default function BranchTree() {
           background: branchColor(b, activeBranch),
           color: '#fff',
           borderRadius: 8,
-          border: b.branch_name === activeBranch ? '3px solid #fff' : '1px solid rgba(255,255,255,0.3)',
+          border: b.branch_name === activeBranch ? '3px solid #1e40af' : '2px solid rgba(0,0,0,0.1)',
           minWidth: 140,
+          boxShadow: b.branch_name === activeBranch ? '0 4px 12px rgba(59, 130, 246, 0.3)' : undefined,
         },
       };
     });
@@ -83,7 +84,7 @@ export default function BranchTree() {
         target: b.branch_name,
         type: 'smoothstep',
         animated: b.status === 'active',
-        style: { stroke: '#6b7280' },
+        style: { stroke: '#9ca3af', strokeWidth: 2 },
       }));
 
     return { initialNodes: nodes, initialEdges: edges };
@@ -105,7 +106,7 @@ export default function BranchTree() {
   );
 
   return (
-    <div className="h-full w-full bg-gray-900 rounded-lg">
+    <div className="h-full w-full bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -116,7 +117,7 @@ export default function BranchTree() {
         minZoom={0.3}
         maxZoom={2}
       >
-        <Background color="#374151" gap={20} />
+        <Background color="#e5e7eb" gap={20} />
         <Controls />
       </ReactFlow>
     </div>

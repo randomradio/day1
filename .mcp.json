@@ -1,11 +1,12 @@
 {
   "mcpServers": {
     "day1": {
-      "command": "/Users/randomradio/.local/share/uv/python/cpython-3.12.11-macos-aarch64-none/bin/python3.12",
+      "command": "/Users/randomradio/src/day1/.venv/bin/python",
       "args": ["-m", "day1.mcp.mcp_server"],
       "cwd": "/Users/randomradio/src/day1",
       "env": {
-        "BM_DATABASE_URL": "mysql+aiomysql://root:111@localhost:6001/mo_catalog"
+        "BM_DATABASE_URL": "mysql+aiomysql://root:111@localhost:6001/mo_catalog",
+        "PYTHONPATH": "/Users/randomradio/src/day1/src"
       }
     }
   }

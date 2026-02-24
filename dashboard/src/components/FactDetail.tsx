@@ -3,20 +3,20 @@ import type { Fact } from '../types/schema';
 
 function FactCard({ fact }: { fact: Fact }) {
   return (
-    <div className="bg-gray-700/50 rounded-lg p-3 border border-gray-600/50">
+    <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
       <div className="flex items-start justify-between gap-2 mb-1">
-        <span className="text-sm text-gray-200 leading-snug">
+        <span className="text-sm text-gray-800 leading-snug">
           {fact.fact_text}
         </span>
         {fact.score !== undefined && (
-          <span className="text-xs text-blue-400 font-mono whitespace-nowrap">
+          <span className="text-xs text-blue-600 font-mono whitespace-nowrap">
             {fact.score.toFixed(3)}
           </span>
         )}
       </div>
       <div className="flex items-center gap-3 text-xs text-gray-500 mt-2">
         {fact.category && (
-          <span className="bg-gray-600 px-2 py-0.5 rounded">{fact.category}</span>
+          <span className="bg-gray-200 px-2 py-0.5 rounded text-gray-700">{fact.category}</span>
         )}
         <span>confidence: {fact.confidence}</span>
         <span>{fact.status}</span>
@@ -24,7 +24,7 @@ function FactCard({ fact }: { fact: Fact }) {
           <span>{new Date(fact.created_at).toLocaleString()}</span>
         )}
       </div>
-      <div className="text-xs text-gray-600 mt-1 font-mono">
+      <div className="text-xs text-gray-400 mt-1 font-mono">
         {fact.id.slice(0, 8)}
         {fact.branch_name !== 'main' && ` · ${fact.branch_name}`}
       </div>
@@ -41,9 +41,9 @@ export default function FactDetail() {
     : `${facts.length} results`;
 
   return (
-    <div className="bg-gray-800 rounded-lg p-4">
+    <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-gray-300">{title}</h3>
+        <h3 className="text-sm font-semibold text-gray-700">{title}</h3>
       </div>
       {displayFacts.length === 0 ? (
         <p className="text-sm text-gray-500">
