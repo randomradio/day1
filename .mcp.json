@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "day1": {
-      "command": "/Users/randomradio/src/day1/.venv/bin/python",
+      "command": "/Users/randomradio/.local/share/uv/python/cpython-3.12.11-macos-aarch64-none/bin/python3.12",
       "args": ["-m", "day1.mcp.server"],
       "cwd": "/Users/randomradio/src/day1",
       "env": {

@@ -84,20 +84,19 @@ async def init_db() -> None:
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-        # Create FULLTEXT indexes (MO auto-indexes, replaces FTS5 virtual tables)
+        # Create FULLTEXT indexes (MatrixOne doesn't support IF NOT EXISTS in this position)
         fulltext_stmts = [
-            "CREATE FULLTEXT INDEX IF NOT EXISTS"
-            " ft_facts ON facts(fact_text, category)",
-            "CREATE FULLTEXT INDEX IF NOT EXISTS"
-            " ft_obs ON observations(summary, tool_name)",
-            "CREATE FULLTEXT INDEX IF NOT EXISTS"
-            " ft_messages ON messages(content, role)",
+            "CREATE FULLTEXT INDEX ft_facts ON facts(fact_text, category)",
+            "CREATE FULLTEXT INDEX ft_obs ON observations(summary, tool_name)",
+            "CREATE FULLTEXT INDEX ft_messages ON messages(content, role)",
         ]
         for stmt in fulltext_stmts:
             try:
                 await conn.execute(text(stmt))
             except sa_exc.DatabaseError as e:
-                logger.debug("Fulltext index may already exist: %s", e)
+                # Index may already exist - ignore error 1064
+                if e.orig.args[0] != 1064 if hasattr(e, 'orig') and e.orig.args else True:
+                    logger.debug("Fulltext index may already exist: %s", e)
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
