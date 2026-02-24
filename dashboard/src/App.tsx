@@ -8,6 +8,7 @@ import ConversationList from './components/ConversationList';
 import ConversationThread from './components/ConversationThread';
 import ReplayList from './components/ReplayList';
 import SemanticDiffView from './components/SemanticDiffView';
+import MessageDetailPanel from './components/MessageDetailPanel';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
 import { useBranchStore } from './stores/branchStore';
 import { useConversationStore } from './stores/conversationStore';
@@ -36,7 +37,7 @@ function ConnectionBadge() {
   };
 
   return (
-    <span className="flex items-center gap-1.5 text-xs text-gray-400" title={`API: ${status}`}>
+    <span className="flex items-center gap-1.5 text-xs text-gray-500" title={`API: ${status}`}>
       <span className={`w-2 h-2 rounded-full ${colors[status]}`} />
       {status === 'ok' ? 'Connected' : status === 'error' ? 'Disconnected' : '...'}
     </span>
@@ -61,8 +62,8 @@ function EmptyState({ tab }: { tab: Tab }) {
   const m = messages[tab];
   return (
     <div className="flex flex-col items-center justify-center h-64 text-center">
-      <h3 className="text-sm font-medium text-gray-400 mb-1">{m.title}</h3>
-      <p className="text-xs text-gray-600 max-w-sm">{m.desc}</p>
+      <h3 className="text-sm font-medium text-gray-500 mb-1">{m.title}</h3>
+      <p className="text-xs text-gray-400 max-w-sm">{m.desc}</p>
     </div>
   );
 }
@@ -81,17 +82,17 @@ export default function App() {
   const hasData = branches.length > 0;
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100">
+    <div className="min-h-screen bg-gray-50 text-gray-900">
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-gray-950/90 backdrop-blur border-b border-gray-800">
+      <header className="sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-gray-200 shadow-sm">
         <div className="max-w-[1600px] mx-auto px-4 py-2.5 flex items-center justify-between">
           <div className="flex items-center gap-5">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-bold">
                 D1
               </div>
-              <span className="text-sm font-semibold text-white tracking-tight">Day1</span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-500 font-mono">v0.1</span>
+              <span className="text-sm font-semibold text-gray-900 tracking-tight">Day1</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-mono border border-gray-200">v0.1</span>
             </div>
 
             <nav className="flex gap-0.5">
@@ -101,8 +102,8 @@ export default function App() {
                   onClick={() => setTab(id)}
                   className={`text-xs px-3 py-1.5 rounded-md transition-all ${
                     activeTab === id
-                      ? 'bg-blue-600/20 text-blue-400 font-medium'
-                      : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50'
+                      ? 'bg-blue-500 text-white font-medium shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                   }`}
                 >
                   {label}
@@ -113,7 +114,7 @@ export default function App() {
 
           <div className="flex items-center gap-3">
             <ConnectionBadge />
-            <span className="text-xs bg-gray-800 px-2.5 py-1 rounded-md text-blue-400 font-mono border border-gray-700">
+            <span className="text-xs bg-blue-50 px-2.5 py-1 rounded-md text-blue-600 font-mono border border-blue-200">
               {activeBranch}
             </span>
           </div>
@@ -123,9 +124,9 @@ export default function App() {
       {/* Error banner */}
       {error && (
         <div className="max-w-[1600px] mx-auto px-4 mt-2">
-          <div className="bg-red-900/30 border border-red-800/50 text-red-300 text-xs px-4 py-2 rounded-lg flex items-center justify-between">
+          <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-4 py-2 rounded-lg flex items-center justify-between">
             <span>{error}</span>
-            <button onClick={clearError} className="text-red-400 hover:text-red-200 ml-4">
+            <button onClick={clearError} className="text-red-600 hover:text-red-800 ml-4">
               Dismiss
             </button>
           </div>
@@ -136,7 +137,7 @@ export default function App() {
       <main className="max-w-[1600px] mx-auto px-4 py-4">
         {!initialized ? (
           <div className="flex items-center justify-center h-64">
-            <div className="text-xs text-gray-600">Loading...</div>
+            <div className="text-xs text-gray-400">Loading...</div>
           </div>
         ) : (
           <>
@@ -167,12 +168,17 @@ export default function App() {
                 <div className="col-span-3 h-[calc(100vh-6rem)]">
                   <ConversationList />
                 </div>
-                <div className="col-span-6 h-[calc(100vh-6rem)]">
+                <div className="col-span-5 h-[calc(100vh-6rem)]">
                   <ConversationThread />
                 </div>
-                <div className="col-span-3 space-y-3 max-h-[calc(100vh-6rem)] overflow-y-auto">
-                  <ReplayList />
-                  <SemanticDiffView />
+                <div className="col-span-4 flex flex-col gap-3 h-[calc(100vh-6rem)]">
+                  <div className="flex-shrink-0 space-y-3 max-h-[45%] overflow-y-auto">
+                    <ReplayList />
+                    <SemanticDiffView />
+                  </div>
+                  <div className="flex-1 min-h-0">
+                    <MessageDetailPanel />
+                  </div>
                 </div>
               </div>
             )}

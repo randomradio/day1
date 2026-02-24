@@ -12,12 +12,36 @@ import { api } from '../api/client';
 
 type Tab = 'memory' | 'conversations' | 'analytics';
 
+// Sync URL hash with tab state
+const updateHash = (tab: Tab) => {
+  if (window.location.hash !== `#${tab}`) {
+    window.location.hash = tab;
+  }
+};
+
+const getTabFromHash = (): Tab => {
+  const hash = window.location.hash.slice(1);
+  if (hash === 'memory' || hash === 'conversations' || hash === 'analytics') {
+    return hash;
+  }
+  return 'memory';
+};
+
+// Listen for hash changes (browser back/forward buttons)
+if (typeof window !== 'undefined') {
+  window.addEventListener('hashchange', () => {
+    const tab = getTabFromHash();
+    useConversationStore.getState().setTab(tab, false);
+  });
+}
+
 interface ConversationStore {
   // State
   tab: Tab;
   conversations: Conversation[];
   selectedConversation: Conversation | null;
   messages: Message[];
+  selectedMessage: Message | null;
   replays: Array<{ replay_id: string; original_conversation_id?: string; status: string; message_count: number; created_at?: string }>;
   semanticDiff: SemanticDiff | null;
   scores: ScoreEntry[];
@@ -28,7 +52,8 @@ interface ConversationStore {
   error: string | null;
 
   // Actions
-  setTab: (tab: Tab) => void;
+  setTab: (tab: Tab, updateUrl?: boolean) => void;
+  setSelectedMessage: (message: Message | null) => void;
   fetchConversations: (params?: { session_id?: string; status?: string; limit?: number }) => Promise<void>;
   selectConversation: (id: string) => Promise<void>;
   fetchMessages: (conversationId: string) => Promise<void>;
@@ -42,10 +67,11 @@ interface ConversationStore {
 }
 
 export const useConversationStore = create<ConversationStore>((set, get) => ({
-  tab: 'memory',
+  tab: getTabFromHash(), // Initialize from URL hash
   conversations: [],
   selectedConversation: null,
   messages: [],
+  selectedMessage: null,
   replays: [],
   semanticDiff: null,
   scores: [],
@@ -55,7 +81,14 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   loading: false,
   error: null,
 
-  setTab: (tab) => set({ tab }),
+  setTab: (tab, updateUrl = true) => {
+    set({ tab });
+    if (updateUrl) {
+      updateHash(tab);
+    }
+  },
+
+  setSelectedMessage: (message) => set({ selectedMessage: message }),
 
   clearError: () => set({ error: null }),
 
