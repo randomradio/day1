@@ -28,6 +28,7 @@ Layer 2 (Memory):   facts, relations, observations    — structured knowledge w
 Layer 1 (History):  conversations, messages            — raw chat history with sequence ordering
 Metadata:           branch_registry, merge_history     — branch lifecycle tracking
 Coordination:       sessions, tasks, task_agents       — multi-agent task management
+Templates:          template_branches                  — reusable knowledge template registry
 Evaluation:         scores, consolidation_history      — quality scoring and audit
 Time Travel:        snapshots                          — point-in-time recovery
 ```
@@ -51,27 +52,28 @@ All 5 core tables (`facts`, `relations`, `observations`, `conversations`, `messa
 
 Unlike `claude-mem`, Day1 adds: branch/merge, PITR/time-travel, multi-agent isolation, knowledge graph.
 
-## Engine Architecture (21 Core Engines)
+## Engine Architecture (23 Core Engines)
 
 | Category | Engines | LLM Dependency |
 |----------|---------|----------------|
 | Write | FactEngine, MessageEngine, ObservationEngine, RelationEngine | None (embedding only) |
 | Query | SearchEngine, AnalyticsEngine, SessionManager | None |
-| Branch | BranchManager, MergeEngine, SnapshotManager | None |
+| Branch | BranchManager, MergeEngine, SnapshotManager, **BranchTopologyEngine** | None |
 | Conversation | ConversationEngine, CherryPick, ReplayEngine | None |
 | Task | TaskEngine, ConsolidationEngine | None |
+| Templates | **TemplateEngine** | None |
 | Analysis | SemanticDiffEngine, ScoringEngine | ScoringEngine only |
 | Infrastructure | EmbeddingProvider, LLMClient | By design |
 
-**Pure memory layer principle**: Only 1 of 21 engines (ScoringEngine) calls LLM directly. All others are transport-agnostic.
+**Pure memory layer principle**: Only 1 of 23 engines (ScoringEngine) calls LLM directly. All others are transport-agnostic.
 
 ## Architecture Evolution
 
 Active decisions and roadmap are tracked in `docs/architecture-decisions.md`.
 
-Current focus areas:
-- **Branch Topology Management** — Lifecycle policies, metadata enrichment, hierarchical visualization for 100+ branches
-- **Template Branches** — Package curated knowledge into reusable templates, version management, fork-to-start
+Implemented (2026-02-24):
+- **Branch Topology Management** — BranchTopologyEngine: lifecycle policies, auto-archive, TTL expiry, metadata enrichment, hierarchical tree, naming validation
+- **Template Branches** — TemplateEngine + TemplateBranch model: create/version/instantiate/find templates, fork-to-start for new agents
 
 Knowledge evolution chain: `Raw Execution → Consolidation → Curation → Template → Reuse`
 

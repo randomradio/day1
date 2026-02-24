@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from day1.core.analytics_engine import AnalyticsEngine
 from day1.core.branch_manager import BranchManager
+from day1.core.branch_topology_engine import BranchTopologyEngine
 from day1.core.consolidation_engine import ConsolidationEngine
 from day1.core.conversation_cherry_pick import ConversationCherryPick
 from day1.core.conversation_engine import ConversationEngine
@@ -25,6 +26,7 @@ from day1.core.semantic_diff import SemanticDiffEngine
 from day1.core.session_manager import SessionManager
 from day1.core.snapshot_manager import SnapshotManager
 from day1.core.task_engine import TaskEngine
+from day1.core.template_engine import TemplateEngine
 
 # ---- Tool Definitions ----
 
@@ -1076,6 +1078,152 @@ TOOL_DEFINITIONS: list[Tool] = [
             "required": ["target_type", "target_id"],
         },
     ),
+    # === Branch Topology ===
+    Tool(
+        name="memory_branch_topology",
+        description=(
+            "Get the hierarchical branch topology tree for visualization."
+            " Shows parent-child relationships, branch status, and metadata."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "root_branch": {
+                    "type": "string",
+                    "description": "Root of the tree (default: main)",
+                },
+                "max_depth": {
+                    "type": "integer",
+                    "description": "Max tree depth (default: 10)",
+                },
+                "include_archived": {
+                    "type": "boolean",
+                    "description": "Include archived branches (default: false)",
+                },
+            },
+        },
+    ),
+    Tool(
+        name="memory_branch_enrich",
+        description=(
+            "Enrich a branch with metadata: purpose, owner, TTL, and tags."
+            " Useful for organizing branches at scale."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "branch_name": {
+                    "type": "string",
+                    "description": "Branch to enrich",
+                },
+                "purpose": {
+                    "type": "string",
+                    "description": "Branch purpose description",
+                },
+                "owner": {
+                    "type": "string",
+                    "description": "Branch owner (agent ID or team)",
+                },
+                "ttl_days": {
+                    "type": "integer",
+                    "description": "Time-to-live in days (auto-expire hint)",
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Tags for discovery and filtering",
+                },
+            },
+            "required": ["branch_name"],
+        },
+    ),
+    # === Templates ===
+    Tool(
+        name="memory_template_list",
+        description=(
+            "List available branch templates. Templates are reusable"
+            " knowledge snapshots that new agents can fork from."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "task_type": {
+                    "type": "string",
+                    "description": "Filter by applicable task type",
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["active", "deprecated"],
+                    "description": "Filter by status (default: active)",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results (default: 20)",
+                },
+            },
+        },
+    ),
+    Tool(
+        name="memory_template_create",
+        description=(
+            "Create a template from a curated branch. The template"
+            " snapshots the branch content (facts, conversations) for reuse."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Template name (unique)",
+                },
+                "source_branch": {
+                    "type": "string",
+                    "description": "Branch to create template from",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Template description",
+                },
+                "applicable_task_types": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Task types this template applies to",
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Discovery tags",
+                },
+            },
+            "required": ["name", "source_branch"],
+        },
+    ),
+    Tool(
+        name="memory_template_instantiate",
+        description=(
+            "Fork a template into a working branch. The new branch"
+            " inherits all facts and conversations from the template."
+            " Use this to start a new task with pre-loaded knowledge."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "template_name": {
+                    "type": "string",
+                    "description": "Template to instantiate",
+                },
+                "target_branch_name": {
+                    "type": "string",
+                    "description": "Name for the new working branch",
+                },
+                "task_id": {
+                    "type": "string",
+                    "description": "Optional task to associate",
+                },
+            },
+            "required": ["template_name", "target_branch_name"],
+        },
+    ),
 ]
 
 
@@ -1581,6 +1729,79 @@ async def handle_tool_call(
         return await engine.get_score_summary(
             target_type=arguments["target_type"],
             target_id=arguments["target_id"],
+        )
+
+    # === Branch Topology ===
+    elif name == "memory_branch_topology":
+        engine = BranchTopologyEngine(session)
+        return await engine.get_topology(
+            root_branch=arguments.get("root_branch", "main"),
+            max_depth=arguments.get("max_depth", 10),
+            include_archived=arguments.get("include_archived", False),
+        )
+
+    elif name == "memory_branch_enrich":
+        engine = BranchTopologyEngine(session)
+        branch = await engine.enrich_branch_metadata(
+            branch_name=arguments["branch_name"],
+            purpose=arguments.get("purpose"),
+            owner=arguments.get("owner"),
+            ttl_days=arguments.get("ttl_days"),
+            tags=arguments.get("tags"),
+        )
+        return {
+            "branch_name": branch.branch_name,
+            "metadata": branch.metadata_json,
+        }
+
+    # === Templates ===
+    elif name == "memory_template_list":
+        engine = TemplateEngine(session)
+        templates = await engine.list_templates(
+            task_type=arguments.get("task_type"),
+            status=arguments.get("status", "active"),
+            limit=arguments.get("limit", 20),
+        )
+        return {
+            "templates": [
+                {
+                    "name": t.name,
+                    "description": t.description,
+                    "version": t.version,
+                    "branch_name": t.branch_name,
+                    "applicable_task_types": t.applicable_task_types,
+                    "tags": t.tags,
+                    "fact_count": t.fact_count,
+                    "conversation_count": t.conversation_count,
+                    "status": t.status,
+                }
+                for t in templates
+            ]
+        }
+
+    elif name == "memory_template_create":
+        engine = TemplateEngine(session)
+        template = await engine.create_template(
+            name=arguments["name"],
+            source_branch=arguments["source_branch"],
+            description=arguments.get("description"),
+            applicable_task_types=arguments.get("applicable_task_types"),
+            tags=arguments.get("tags"),
+        )
+        return {
+            "name": template.name,
+            "version": template.version,
+            "branch_name": template.branch_name,
+            "fact_count": template.fact_count,
+            "conversation_count": template.conversation_count,
+        }
+
+    elif name == "memory_template_instantiate":
+        engine = TemplateEngine(session)
+        return await engine.instantiate_template(
+            template_name=arguments["template_name"],
+            target_branch_name=arguments["target_branch_name"],
+            task_id=arguments.get("task_id"),
         )
 
     else:

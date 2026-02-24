@@ -364,6 +364,46 @@ class ConsolidationHistory(Base):
 # === Scoring ===
 
 
+# === Template Branches ===
+
+
+class TemplateBranch(Base):
+    """Registry for reusable branch templates.
+
+    This is a metadata/registry table — it does NOT participate in DATA BRANCH
+    operations.  Template content lives in actual branches managed by
+    BranchManager.  Uses native JSON (not JsonText).
+    """
+
+    __tablename__ = "template_branches"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    branch_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    source_branch: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    applicable_task_types: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    tags: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    fact_count: Mapped[int] = mapped_column(Integer, default=0)
+    conversation_count: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    created_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    metadata_json: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        Index("idx_template_name", "name"),
+        Index("idx_template_status", "status"),
+    )
+
+
+# === Scoring ===
+
+
 class Score(Base):
     """A score applied to a message, conversation, or replay."""
 

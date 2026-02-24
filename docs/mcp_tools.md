@@ -431,9 +431,82 @@ tool("memory_session_context", {
 # Returns: { "session": {...}, "facts": [...], "conversations": [...], "observations": [...] }
 ```
 
+## Branch Topology
+
+### memory_branch_topology
+
+Get the hierarchical branch topology tree.
+
+```python
+tool("memory_branch_topology", {
+    "root_branch": str | None,       # Optional: root (default "main")
+    "max_depth": int | None,         # Optional: max tree depth (default 10)
+    "include_archived": bool | None, # Optional: include archived (default false)
+})
+# Returns: { "branch_name": str, "children": [...], "status": str, "metadata": dict }
+```
+
+### memory_branch_enrich
+
+Enrich branch metadata with purpose, owner, TTL, tags.
+
+```python
+tool("memory_branch_enrich", {
+    "branch_name": str,              # Required: branch to enrich
+    "purpose": str | None,           # Optional: branch purpose
+    "owner": str | None,             # Optional: owner agent/team
+    "ttl_days": int | None,          # Optional: time-to-live hint
+    "tags": list[str] | None,       # Optional: discovery tags
+})
+# Returns: { "branch_name": str, "metadata": dict }
+```
+
+## Templates
+
+### memory_template_list
+
+List available branch templates.
+
+```python
+tool("memory_template_list", {
+    "task_type": str | None,         # Optional: filter by task type
+    "status": str | None,            # Optional: "active" or "deprecated" (default "active")
+    "limit": int | None,             # Optional: max results (default 20)
+})
+# Returns: { "templates": [{ "name": str, "version": int, "branch_name": str, ... }] }
+```
+
+### memory_template_create
+
+Create a template from a curated branch.
+
+```python
+tool("memory_template_create", {
+    "name": str,                     # Required: template name (unique)
+    "source_branch": str,            # Required: branch to snapshot
+    "description": str | None,      # Optional
+    "applicable_task_types": list[str] | None,  # Optional
+    "tags": list[str] | None,       # Optional
+})
+# Returns: { "name": str, "version": int, "branch_name": str, "fact_count": int, "conversation_count": int }
+```
+
+### memory_template_instantiate
+
+Fork a template into a working branch.
+
+```python
+tool("memory_template_instantiate", {
+    "template_name": str,            # Required: template to instantiate
+    "target_branch_name": str,       # Required: new working branch name
+    "task_id": str | None,          # Optional: task to associate
+})
+# Returns: { "branch_name": str, "template_name": str, "template_version": int, "facts_inherited": int }
+```
+
 ## Implementation File
 
-- **Definition & Handlers**: `src/day1/mcp/tools.py` (29 tools)
+- **Definition & Handlers**: `src/day1/mcp/tools.py` (34 tools)
 - **MCP Server**: `src/day1/mcp/mcp_server.py` (stdio mode)
 - **MCP HTTP Server**: `src/day1/mcp/mcp_server_http.py` (SSE mode)
 - **Handler pattern**: Each tool = async function dispatched via `handle_tool_call()`

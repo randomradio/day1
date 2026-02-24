@@ -19,18 +19,19 @@ Day1 system design and integration points. Read this when understanding how comp
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
 │  │ Claude Code   │  │  MCP Server  │  │   REST API   │  │
 │  │  Plugin       │  │ (stdio/SSE)  │  │  (FastAPI)   │  │
-│  │ (11 Hooks)    │  │  29 tools    │  │  55+ endpts  │  │
+│  │ (11 Hooks)    │  │  34 tools    │  │  68+ endpts  │  │
 │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  │
 │         └──────────────────┼─────────────────┘          │
 │                            ▼                             │
 │  ┌──────────────────────────────────────────────────┐   │
-│  │         Core Engine Layer (19 engines)            │   │
+│  │         Core Engine Layer (23 engines)            │   │
 │  │                                                   │   │
 │  │  Write:  Fact │ Message │ Observation │ Relation  │   │
 │  │  Query:  Search │ Analytics │ SessionManager      │   │
-│  │  Branch: BranchMgr │ Merge │ Snapshot             │   │
+│  │  Branch: BranchMgr │ Merge │ Snapshot │ Topology  │   │
 │  │  Conv:   Conversation │ CherryPick │ Replay       │   │
 │  │  Task:   TaskEngine │ Consolidation               │   │
+│  │  Tmpl:   TemplateEngine                           │   │
 │  │  Eval:   SemanticDiff │ Scoring (LLM-as-judge)    │   │
 │  └───────────────────────┬──────────────────────────┘   │
 │                          ▼                               │
@@ -48,6 +49,7 @@ Day1 system design and integration points. Read this when understanding how comp
 │  │  conversations, messages          (Layer 1: History)│  │
 │  │  branch_registry, merge_history   (Metadata)       │  │
 │  │  sessions, tasks, task_agents     (Coordination)   │  │
+│  │  template_branches                (Templates)      │  │
 │  │  scores, consolidation_history    (Evaluation)     │  │
 │  │  snapshots                        (Time Travel)    │  │
 │  └──────────────────────────────────────────────────┘   │
@@ -57,6 +59,7 @@ Day1 system design and integration points. Read this when understanding how comp
 │  │  BranchTree │ ConversationList │ ConversationThread│  │
 │  │  MergePanel │ Timeline │ SearchBar │ FactDetail    │  │
 │  │  ReplayList │ SemanticDiffView │ AnalyticsDashboard│  │
+│  │  BranchTopologyPanel │ TemplateList │ CreateWizard │  │
 │  └──────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────┘
 ```

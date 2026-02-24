@@ -265,6 +265,83 @@ export interface SemanticDiff {
   };
 }
 
+// === Branch Topology ===
+
+export interface BranchTopologyNode {
+  branch_name: string;
+  parent_branch: string;
+  status: string;
+  description?: string;
+  forked_at?: string;
+  metadata?: Record<string, unknown>;
+  children: BranchTopologyNode[];
+}
+
+export interface BranchStats {
+  branch_name: string;
+  fact_count: number;
+  conversation_count: number;
+  observation_count: number;
+  agent_count: number;
+  last_activity?: string;
+}
+
+export interface AutoArchiveResult {
+  candidates: Array<{
+    branch_name: string;
+    status: string;
+    reason: string;
+  }>;
+  archived: number;
+}
+
+export interface TTLExpiredBranch {
+  branch_name: string;
+  ttl_days: number;
+  forked_at: string;
+  expired_at: string;
+}
+
+export interface BranchNameValidation {
+  valid: boolean;
+  convention?: string;
+  suggestion?: string;
+}
+
+// === Templates ===
+
+export interface TemplateBranch {
+  id: string;
+  name: string;
+  description?: string;
+  version: number;
+  branch_name: string;
+  source_branch?: string;
+  applicable_task_types?: string[];
+  tags?: string[];
+  fact_count: number;
+  conversation_count: number;
+  status: string;
+  created_by?: string;
+  metadata?: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface TemplateListResponse {
+  templates: TemplateBranch[];
+}
+
+export interface TemplateInstantiateResult {
+  branch_name: string;
+  template_name: string;
+  template_version: number;
+  source_branch: string;
+  facts_inherited: number;
+  conversations_inherited: number;
+  task_id?: string;
+}
+
 // === Analytics ===
 
 export interface AnalyticsOverview {

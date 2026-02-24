@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 from day1.api.routes import (
     analytics,
+    branch_topology,
     branches,
     conversations,
     facts,
@@ -32,6 +33,7 @@ from day1.api.routes import (
     sessions,
     snapshots,
     tasks,
+    templates,
 )
 from day1.db.engine import init_db
 
@@ -127,7 +129,10 @@ app.include_router(tasks.router, prefix="/api/v1", tags=["tasks"], dependencies=
 app.include_router(facts.router, prefix="/api/v1", tags=["facts"], dependencies=_auth)
 app.include_router(observations.router, prefix="/api/v1", tags=["observations"], dependencies=_auth)
 app.include_router(relations.router, prefix="/api/v1", tags=["relations"], dependencies=_auth)
+# Topology routes before branches (fixed paths before {branch_name} param)
+app.include_router(branch_topology.router, prefix="/api/v1", tags=["branch-topology"], dependencies=_auth)
 app.include_router(branches.router, prefix="/api/v1", tags=["branches"], dependencies=_auth)
+app.include_router(templates.router, prefix="/api/v1", tags=["templates"], dependencies=_auth)
 app.include_router(sessions.router, prefix="/api/v1", tags=["sessions"], dependencies=_auth)
 app.include_router(snapshots.router, prefix="/api/v1", tags=["snapshots"], dependencies=_auth)
 app.include_router(replays.router, prefix="/api/v1", tags=["replays"], dependencies=_auth)

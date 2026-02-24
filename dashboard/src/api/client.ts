@@ -1,6 +1,10 @@
 import type {
   AnalyticsOverview,
+  AutoArchiveResult,
   BranchListResponse,
+  BranchNameValidation,
+  BranchStats,
+  BranchTopologyNode,
   CherryPickRequest,
   CherryPickResult,
   Conversation,
@@ -21,6 +25,10 @@ import type {
   SearchResult,
   SemanticDiff,
   Snapshot,
+  TTLExpiredBranch,
+  TemplateBranch,
+  TemplateInstantiateResult,
+  TemplateListResponse,
   TrendData,
 } from '../types/schema';
 
@@ -297,4 +305,108 @@ export const api = {
 
   scoreSummary: (targetType: string, targetId: string) =>
     fetchJSON<ScoreSummary>(`${API}/scores/summary/${targetType}/${targetId}`),
+
+  // Branch Topology
+  getTopology: (rootBranch = 'main', maxDepth = 10, includeArchived = false) =>
+    fetchJSON<BranchTopologyNode>(
+      `${API}/branches/topology?root_branch=${rootBranch}&max_depth=${maxDepth}&include_archived=${includeArchived}`
+    ),
+
+  getBranchStats: (name: string) =>
+    fetchJSON<BranchStats>(`${API}/branches/${name}/stats`),
+
+  enrichBranch: (name: string, data: {
+    purpose?: string;
+    owner?: string;
+    ttl_days?: number;
+    tags?: string[];
+  }) =>
+    fetchJSON<{ branch_name: string; metadata: Record<string, unknown> }>(
+      `${API}/branches/${name}/enrich`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      }
+    ),
+
+  autoArchive: (inactiveDays = 30, archiveMerged = true, dryRun = false) =>
+    fetchJSON<AutoArchiveResult>(`${API}/branches/auto-archive`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        inactive_days: inactiveDays,
+        archive_merged: archiveMerged,
+        dry_run: dryRun,
+      }),
+    }),
+
+  getExpiredBranches: () =>
+    fetchJSON<{ expired: TTLExpiredBranch[]; count: number }>(
+      `${API}/branches/expired`
+    ),
+
+  validateBranchName: (name: string) =>
+    fetchJSON<BranchNameValidation>(`${API}/branches/validate-name`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ branch_name: name }),
+    }),
+
+  // Templates
+  listTemplates: (taskType?: string, status = 'active', limit = 20) => {
+    const qs = new URLSearchParams({ status, limit: String(limit) });
+    if (taskType) qs.set('task_type', taskType);
+    return fetchJSON<TemplateListResponse>(`${API}/templates?${qs}`);
+  },
+
+  getTemplate: (name: string) =>
+    fetchJSON<TemplateBranch>(`${API}/templates/${name}`),
+
+  createTemplate: (data: {
+    name: string;
+    source_branch: string;
+    description?: string;
+    applicable_task_types?: string[];
+    tags?: string[];
+    created_by?: string;
+  }) =>
+    fetchJSON<TemplateBranch>(`${API}/templates`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  instantiateTemplate: (name: string, targetBranch: string, taskId?: string) =>
+    fetchJSON<TemplateInstantiateResult>(
+      `${API}/templates/${name}/instantiate`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target_branch_name: targetBranch,
+          task_id: taskId,
+        }),
+      }
+    ),
+
+  updateTemplate: (name: string, sourceBranch: string, reason?: string) =>
+    fetchJSON<TemplateBranch>(`${API}/templates/${name}/update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_branch: sourceBranch, reason }),
+    }),
+
+  deprecateTemplate: (name: string) =>
+    fetchJSON<TemplateBranch>(`${API}/templates/${name}/deprecate`, {
+      method: 'POST',
+    }),
+
+  findTemplate: (taskType: string, taskDescription?: string) => {
+    const qs = new URLSearchParams({ task_type: taskType });
+    if (taskDescription) qs.set('task_description', taskDescription);
+    return fetchJSON<{ template: TemplateBranch | null }>(
+      `${API}/templates/find?${qs}`
+    );
+  },
 };
