@@ -35,6 +35,7 @@ async def handler(input_data: dict) -> dict:
             return {}
 
         agent_id = os.environ.get("BM_AGENT_ID")
+        active_branch = os.environ.get("BM_BRANCH") or "main"
 
         # Find active conversation
         conv_engine = ConversationEngine(session)
@@ -44,6 +45,7 @@ async def handler(input_data: dict) -> dict:
                 session_id=sid,
                 agent_id=agent_id,
                 task_id=os.environ.get("BM_TASK_ID"),
+                branch_name=active_branch,
             )
 
         embedder = get_embedding_provider()

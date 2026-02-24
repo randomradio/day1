@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from day1.core.conversation_cherry_pick import ConversationCherryPick
 from day1.core.conversation_engine import ConversationEngine
 from day1.core.exceptions import (
     ConversationNotFoundError,
@@ -52,6 +53,13 @@ class ConversationResponse(BaseModel):
 class ForkRequest(BaseModel):
     message_id: str
     branch: str | None = None
+    title: str | None = None
+
+
+class CherryPickRequest(BaseModel):
+    target_branch: str
+    from_sequence: int | None = None
+    to_sequence: int | None = None
     title: str | None = None
 
 
@@ -197,3 +205,30 @@ async def complete_conversation(
     except ConversationNotFoundError:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return _conv_response(conv)
+
+
+@router.post("/conversations/{conversation_id}/cherry-pick")
+async def cherry_pick_conversation(
+    conversation_id: str,
+    body: CherryPickRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Cherry-pick a conversation or message range to another branch."""
+    cherry = ConversationCherryPick(session)
+    try:
+        if body.from_sequence is not None and body.to_sequence is not None:
+            result = await cherry.cherry_pick_message_range(
+                conversation_id=conversation_id,
+                from_sequence=body.from_sequence,
+                to_sequence=body.to_sequence,
+                target_branch=body.target_branch,
+                title=body.title,
+            )
+        else:
+            result = await cherry.cherry_pick_conversation(
+                conversation_id=conversation_id,
+                target_branch=body.target_branch,
+            )
+    except ConversationNotFoundError:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return result

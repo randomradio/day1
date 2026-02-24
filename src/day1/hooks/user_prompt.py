@@ -36,6 +36,7 @@ async def handler(input_data: dict) -> dict:
             return {}
 
         agent_id = os.environ.get("BM_AGENT_ID")
+        active_branch = os.environ.get("BM_BRANCH") or "main"
 
         # Ensure there's an active conversation for this session
         conv_engine = ConversationEngine(session)
@@ -45,6 +46,7 @@ async def handler(input_data: dict) -> dict:
                 session_id=sid,
                 agent_id=agent_id,
                 task_id=os.environ.get("BM_TASK_ID"),
+                branch_name=active_branch,
                 title=prompt[:100],
             )
             _debug_log(f"[user_prompt] Created conversation {conv.id}")

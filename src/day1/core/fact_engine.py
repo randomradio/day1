@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
 from sqlalchemy import select, update
@@ -14,6 +15,8 @@ from day1.core.embedding import (
 )
 from day1.core.exceptions import FactNotFoundError
 from day1.db.models import Fact
+
+logger = logging.getLogger(__name__)
 
 
 class FactEngine:
@@ -55,11 +58,17 @@ class FactEngine:
         Returns:
             The created Fact object.
         """
-        vec = await self._embedder.embed(fact_text)
+        # Embedding is non-fatal: capture always succeeds
+        embedding_str = None
+        try:
+            vec = await self._embedder.embed(fact_text)
+            embedding_str = embedding_to_vecf32(vec)
+        except Exception as e:
+            logger.warning("Embedding failed for fact, saving without: %s", e)
 
         fact = Fact(
             fact_text=fact_text,
-            embedding=embedding_to_vecf32(vec),
+            embedding=embedding_str,
             category=category,
             confidence=confidence,
             source_type=source_type,
@@ -111,9 +120,12 @@ class FactEngine:
         values: dict = {}
 
         if fact_text is not None and fact_text != fact.fact_text:
-            vec = await self._embedder.embed(fact_text)
             values["fact_text"] = fact_text
-            values["embedding"] = embedding_to_vecf32(vec)
+            try:
+                vec = await self._embedder.embed(fact_text)
+                values["embedding"] = embedding_to_vecf32(vec)
+            except Exception as e:
+                logger.warning("Embedding failed for fact update, keeping old: %s", e)
             # MO FULLTEXT INDEX auto-updates — no manual FTS ops needed
 
         if confidence is not None:

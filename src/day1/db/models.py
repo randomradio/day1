@@ -286,7 +286,9 @@ class Conversation(Base):
     message_count: Mapped[int] = mapped_column(Integer, default=0)
     total_tokens: Mapped[int] = mapped_column(Integer, default=0)
     model: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    metadata_json: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
+    metadata_json: Mapped[dict | None] = mapped_column(
+        "metadata", JsonText, nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()

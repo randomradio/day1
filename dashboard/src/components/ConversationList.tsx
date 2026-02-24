@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useConversationStore } from '../stores/conversationStore';
+import { useBranchStore } from '../stores/branchStore';
 import { useVisiblePolling } from '../hooks/usePolling';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -13,19 +14,23 @@ export default function ConversationList() {
   const {
     conversations,
     selectedConversation,
+    branchFilter,
     loading,
     fetchConversations,
     refreshConversations,
     selectConversation,
     fetchReplays,
     refreshReplays,
+    setBranchFilter,
     pollingEnabled,
   } = useConversationStore();
 
-  // Initial fetch
+  const { branches } = useBranchStore();
+
+  // Initial fetch (with branch filter)
   useEffect(() => {
-    fetchConversations({ limit: 50 });
-  }, [fetchConversations]);
+    fetchConversations({ limit: 50, branch: branchFilter || undefined });
+  }, [fetchConversations, branchFilter]);
 
   // Poll conversations every 5 seconds
   useVisiblePolling(refreshConversations, 5000, pollingEnabled);
@@ -38,6 +43,22 @@ export default function ConversationList() {
       <div className="flex items-center justify-between mb-2">
         <span className="text-sm text-gray-700 font-medium">Conversations</span>
         <span className="text-xs text-gray-500">{conversations.length} total</span>
+      </div>
+
+      {/* Branch filter */}
+      <div className="flex items-center gap-2 mb-2">
+        <select
+          value={branchFilter || ''}
+          onChange={(e) => setBranchFilter(e.target.value || null)}
+          className="flex-1 bg-white text-gray-800 text-xs px-2 py-1 rounded border border-gray-300 focus:border-blue-500 focus:outline-none"
+        >
+          <option value="">All branches</option>
+          {branches.map((b) => (
+            <option key={b.branch_name} value={b.branch_name}>
+              {b.branch_name}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="flex-1 overflow-y-auto space-y-1">
@@ -73,6 +94,11 @@ export default function ConversationList() {
               <div className="flex items-center gap-2 mt-1 text-gray-500">
                 <span>{conv.message_count} msgs</span>
                 <span>{conv.total_tokens.toLocaleString()} tok</span>
+                {conv.branch_name && conv.branch_name !== 'main' && (
+                  <span className="text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
+                    {conv.branch_name}
+                  </span>
+                )}
                 {conv.parent_conversation_id && (
                   <span className="text-amber-600">fork</span>
                 )}
