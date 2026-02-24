@@ -220,8 +220,402 @@ tool("memory_time_travel", {
 # Returns: Same as memory_search, but from historical state
 ```
 
+## Task Management
+
+### memory_task_create
+
+Create a multi-agent task with objectives.
+
+```python
+tool("memory_task_create", {
+    "name": str,                   # Required: Task name
+    "description": str | None,    # Optional: Task description
+    "task_type": str | None,      # Optional: Category (e.g., "bug_fix", "feature")
+    "tags": list[str] | None,    # Optional: Tags for discovery
+    "objectives": list[dict] | None,  # Optional: [{description, priority}]
+    "parent_branch": str | None,  # Optional: Parent branch (default "main")
+})
+# Returns: { "task_id": str, "branch_name": str }
+```
+
+### memory_task_join
+
+Join a task as an agent.
+
+```python
+tool("memory_task_join", {
+    "task_id": str,                # Required
+    "agent_id": str,              # Required
+    "role": str | None,           # Optional: "implementer", "reviewer", "tester"
+    "assigned_objectives": list[int] | None,  # Optional: Objective indices
+})
+# Returns: { "branch_name": str, "objectives": [...] }
+```
+
+### memory_task_status
+
+Get task status including agents and objectives.
+
+```python
+tool("memory_task_status", {
+    "task_id": str,               # Required
+})
+# Returns: { "task": {...}, "agents": [...], "objectives": [...] }
+```
+
+### memory_task_update
+
+Update task objective status.
+
+```python
+tool("memory_task_update", {
+    "task_id": str,               # Required
+    "objective_id": int,          # Required: Objective index
+    "status": str,                # Required: "pending", "in_progress", "completed"
+    "agent_id": str | None,       # Optional
+    "notes": str | None,          # Optional
+})
+```
+
+### memory_consolidate
+
+Consolidate observations into candidate facts (session/agent/task level).
+
+```python
+tool("memory_consolidate", {
+    "level": str,                  # Required: "session", "agent", "task"
+    "session_id": str | None,      # Required for "session"
+    "task_id": str | None,         # Required for "agent"/"task"
+    "agent_id": str | None,        # Required for "agent"
+})
+# Returns: { "new_facts": int, "duplicates_merged": int }
+```
+
+### memory_search_task
+
+Search within a task's scope (cross-agent).
+
+```python
+tool("memory_search_task", {
+    "task_id": str,               # Required
+    "query": str,                 # Required
+    "agent_id": str | None,       # Optional: Filter by agent
+    "limit": int | None,          # Optional
+})
+```
+
+### memory_agent_timeline
+
+Get agent's activity timeline.
+
+```python
+tool("memory_agent_timeline", {
+    "agent_id": str,              # Required
+    "limit": int | None,          # Optional
+})
+```
+
+### memory_replay_task_type
+
+Analyze patterns across tasks of same type.
+
+```python
+tool("memory_replay_task_type", {
+    "task_type": str,             # Required
+    "limit": int | None,          # Optional
+})
+```
+
+## Conversation Management
+
+### memory_log_message
+
+Add a message to a conversation.
+
+```python
+tool("memory_log_message", {
+    "conversation_id": str | None,  # Optional: Auto-creates if absent
+    "role": str,                    # Required: "user", "assistant", "system", "tool"
+    "content": str,                 # Required
+    "thinking": str | None,         # Optional: Chain-of-thought
+    "tool_calls": list | None,      # Optional
+    "model": str | None,            # Optional
+    "branch": str | None,           # Optional
+})
+# Returns: { "message_id": str, "conversation_id": str }
+```
+
+### memory_list_conversations
+
+List conversations with filters.
+
+```python
+tool("memory_list_conversations", {
+    "branch": str | None,          # Optional
+    "session_id": str | None,      # Optional
+    "agent_id": str | None,        # Optional
+    "task_id": str | None,         # Optional
+    "limit": int | None,           # Optional
+})
+```
+
+### memory_search_messages
+
+Search across messages.
+
+```python
+tool("memory_search_messages", {
+    "query": str,                  # Required
+    "branch": str | None,         # Optional
+    "conversation_id": str | None, # Optional
+    "role": str | None,           # Optional
+    "limit": int | None,          # Optional
+})
+```
+
+### memory_fork_conversation
+
+Fork a conversation at a message (for replay).
+
+```python
+tool("memory_fork_conversation", {
+    "conversation_id": str,       # Required
+    "fork_at_message_id": str,    # Required
+    "branch": str | None,        # Optional: Target branch
+    "title": str | None,         # Optional
+})
+# Returns: { "forked_conversation_id": str, "messages_copied": int }
+```
+
+### memory_cherry_pick_conversation
+
+Cherry-pick a conversation or message range to another branch.
+
+```python
+tool("memory_cherry_pick_conversation", {
+    "conversation_id": str,       # Required
+    "target_branch": str,         # Required
+    "from_sequence": int | None,  # Optional: Start of range
+    "to_sequence": int | None,    # Optional: End of range
+})
+# Returns: { "new_conversation_id": str, "messages_copied": int }
+```
+
+## Curation
+
+### memory_branch_create_curated
+
+Create a curated branch from selected conversations and facts.
+
+```python
+tool("memory_branch_create_curated", {
+    "branch_name": str,           # Required
+    "parent_branch": str | None,  # Optional (default "main")
+    "conversation_ids": list[str] | None,  # Optional
+    "fact_ids": list[str] | None,          # Optional
+    "description": str | None,    # Optional
+})
+# Returns: { "branch_name": str, "conversations": int, "facts": int }
+```
+
+### memory_session_context
+
+Get full session context (facts, conversations, observations).
+
+```python
+tool("memory_session_context", {
+    "session_id": str,            # Required
+    "message_limit": int | None,  # Optional
+    "fact_limit": int | None,     # Optional
+})
+# Returns: { "session": {...}, "facts": [...], "conversations": [...], "observations": [...] }
+```
+
+## Branch Topology
+
+### memory_branch_topology
+
+Get the hierarchical branch topology tree.
+
+```python
+tool("memory_branch_topology", {
+    "root_branch": str | None,       # Optional: root (default "main")
+    "max_depth": int | None,         # Optional: max tree depth (default 10)
+    "include_archived": bool | None, # Optional: include archived (default false)
+})
+# Returns: { "branch_name": str, "children": [...], "status": str, "metadata": dict }
+```
+
+### memory_branch_enrich
+
+Enrich branch metadata with purpose, owner, TTL, tags.
+
+```python
+tool("memory_branch_enrich", {
+    "branch_name": str,              # Required: branch to enrich
+    "purpose": str | None,           # Optional: branch purpose
+    "owner": str | None,             # Optional: owner agent/team
+    "ttl_days": int | None,          # Optional: time-to-live hint
+    "tags": list[str] | None,       # Optional: discovery tags
+})
+# Returns: { "branch_name": str, "metadata": dict }
+```
+
+## Templates
+
+### memory_template_list
+
+List available branch templates.
+
+```python
+tool("memory_template_list", {
+    "task_type": str | None,         # Optional: filter by task type
+    "status": str | None,            # Optional: "active" or "deprecated" (default "active")
+    "limit": int | None,             # Optional: max results (default 20)
+})
+# Returns: { "templates": [{ "name": str, "version": int, "branch_name": str, ... }] }
+```
+
+### memory_template_create
+
+Create a template from a curated branch.
+
+```python
+tool("memory_template_create", {
+    "name": str,                     # Required: template name (unique)
+    "source_branch": str,            # Required: branch to snapshot
+    "description": str | None,      # Optional
+    "applicable_task_types": list[str] | None,  # Optional
+    "tags": list[str] | None,       # Optional
+})
+# Returns: { "name": str, "version": int, "branch_name": str, "fact_count": int, "conversation_count": int }
+```
+
+### memory_template_instantiate
+
+Fork a template into a working branch.
+
+```python
+tool("memory_template_instantiate", {
+    "template_name": str,            # Required: template to instantiate
+    "target_branch_name": str,       # Required: new working branch name
+    "task_id": str | None,          # Optional: task to associate
+})
+# Returns: { "branch_name": str, "template_name": str, "template_version": int, "facts_inherited": int }
+```
+
+## Verification
+
+### verify_fact
+
+Verify a fact using LLM-as-judge. Evaluates accuracy, relevance, specificity.
+
+```python
+tool("verify_fact", {
+    "fact_id": str,              # Required: Fact ID to verify
+    "dimensions": list[str],     # Optional: Evaluation dimensions
+    "context": str | None,       # Optional: Additional context
+})
+# Returns: { "fact_id": str, "verdict": str, "reason": str, "scores": [...] }
+```
+
+### verify_batch
+
+Batch-verify all unverified facts on a branch.
+
+```python
+tool("verify_batch", {
+    "branch_name": str | None,   # Optional: Branch to verify
+    "limit": int | None,         # Optional: Max facts (default: 50)
+    "only_unverified": bool,     # Optional: Skip verified (default: true)
+})
+# Returns: { "total_processed": int, "verified": int, "invalidated": int, ... }
+```
+
+### verify_merge_gate
+
+Check if a branch passes the verification merge gate.
+
+```python
+tool("verify_merge_gate", {
+    "source_branch": str,        # Required: Branch to check
+    "require_verified": bool,    # Optional: Require all verified (default: true)
+})
+# Returns: { "can_merge": bool, "verified": int, "unverified": int, ... }
+```
+
+## Handoff
+
+### memory_handoff_create
+
+Create a structured handoff between branches/agents with verified facts.
+
+```python
+tool("memory_handoff_create", {
+    "source_branch": str,        # Required: Source branch
+    "target_branch": str,        # Required: Target branch
+    "handoff_type": str,         # Optional: task_continuation, agent_switch, etc.
+    "include_unverified": bool,  # Optional: Include unverified facts (default: false)
+    "context_summary": str,      # Optional: Manual summary
+})
+# Returns: { "handoff_id": str, "fact_count": int, "conversation_count": int, ... }
+```
+
+### memory_handoff_get
+
+Retrieve the full handoff packet for a receiving agent.
+
+```python
+tool("memory_handoff_get", {
+    "handoff_id": str,           # Required: Handoff record ID
+})
+# Returns: { "facts": [...], "conversations": [...], "context_summary": str, ... }
+```
+
+## Knowledge Bundles
+
+### knowledge_bundle_create
+
+Create a portable knowledge bundle from a branch.
+
+```python
+tool("knowledge_bundle_create", {
+    "name": str,                 # Required: Bundle name
+    "source_branch": str,        # Required: Branch to export from
+    "description": str | None,   # Optional: Description
+    "tags": list[str] | None,   # Optional: Discovery tags
+    "only_verified": bool,       # Optional: Only verified facts (default: true)
+})
+# Returns: { "id": str, "name": str, "fact_count": int, ... }
+```
+
+### knowledge_bundle_import
+
+Import a knowledge bundle into a target branch.
+
+```python
+tool("knowledge_bundle_import", {
+    "bundle_id": str,            # Required: Bundle to import
+    "target_branch": str,        # Required: Target branch
+})
+# Returns: { "facts_imported": int, "conversations_imported": int, ... }
+```
+
+### knowledge_bundle_list
+
+List available knowledge bundles.
+
+```python
+tool("knowledge_bundle_list", {
+    "status": str | None,        # Optional: active, deprecated (default: active)
+    "limit": int | None,         # Optional: Max results (default: 20)
+})
+# Returns: { "bundles": [...] }
+```
+
 ## Implementation File
 
-- **Definition**: `src/mcp/tools/__init__.py`
-- **Registration**: `src/mcp/server.py`
-- **Handler pattern**: Each tool = async function with typed args
+- **Definition & Handlers**: `src/day1/mcp/tools.py` (42 tools)
+- **MCP Server**: `src/day1/mcp/mcp_server.py` (stdio mode)
+- **MCP HTTP Server**: `src/day1/mcp/mcp_server_http.py` (SSE mode)
+- **Handler pattern**: Each tool = async function dispatched via `handle_tool_call()`

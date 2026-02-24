@@ -265,6 +265,83 @@ export interface SemanticDiff {
   };
 }
 
+// === Branch Topology ===
+
+export interface BranchTopologyNode {
+  branch_name: string;
+  parent_branch: string;
+  status: string;
+  description?: string;
+  forked_at?: string;
+  metadata?: Record<string, unknown>;
+  children: BranchTopologyNode[];
+}
+
+export interface BranchStats {
+  branch_name: string;
+  fact_count: number;
+  conversation_count: number;
+  observation_count: number;
+  agent_count: number;
+  last_activity?: string;
+}
+
+export interface AutoArchiveResult {
+  candidates: Array<{
+    branch_name: string;
+    status: string;
+    reason: string;
+  }>;
+  archived: number;
+}
+
+export interface TTLExpiredBranch {
+  branch_name: string;
+  ttl_days: number;
+  forked_at: string;
+  expired_at: string;
+}
+
+export interface BranchNameValidation {
+  valid: boolean;
+  convention?: string;
+  suggestion?: string;
+}
+
+// === Templates ===
+
+export interface TemplateBranch {
+  id: string;
+  name: string;
+  description?: string;
+  version: number;
+  branch_name: string;
+  source_branch?: string;
+  applicable_task_types?: string[];
+  tags?: string[];
+  fact_count: number;
+  conversation_count: number;
+  status: string;
+  created_by?: string;
+  metadata?: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface TemplateListResponse {
+  templates: TemplateBranch[];
+}
+
+export interface TemplateInstantiateResult {
+  branch_name: string;
+  template_name: string;
+  template_version: number;
+  source_branch: string;
+  facts_inherited: number;
+  conversations_inherited: number;
+  task_id?: string;
+}
+
 // === Analytics ===
 
 export interface AnalyticsOverview {
@@ -302,4 +379,113 @@ export interface ScoreSummary {
   target_type: string;
   target_id: string;
   dimensions: Record<string, { avg: number; count: number; min: number; max: number }>;
+}
+
+// === Verification ===
+
+export interface VerificationResult {
+  fact_id: string;
+  verdict: string;
+  reason: string;
+  scores: Array<{
+    id: string;
+    dimension: string;
+    value: number;
+    explanation: string;
+  }>;
+}
+
+export interface BatchVerifyResult {
+  branch_name: string;
+  total_processed: number;
+  verified: number;
+  invalidated: number;
+  unverified: number;
+  details: VerificationResult[];
+}
+
+export interface MergeGateResult {
+  source_branch: string;
+  can_merge: boolean;
+  total_facts: number;
+  verified: number;
+  unverified: number;
+  invalidated: number;
+  unverified_facts: Array<{ id: string; fact_text: string; category?: string }>;
+}
+
+export interface VerificationSummary {
+  branch_name: string;
+  total_facts: number;
+  by_status: Record<string, number>;
+  by_category: Record<string, Record<string, number>>;
+  verification_rate: number;
+}
+
+// === Handoff ===
+
+export interface HandoffRecord {
+  id: string;
+  source_branch: string;
+  target_branch: string;
+  handoff_type: string;
+  fact_count: number;
+  conversation_count: number;
+  verification_status: string;
+  context_summary?: string;
+  created_at?: string;
+}
+
+export interface HandoffPacket {
+  handoff_id: string;
+  handoff_type: string;
+  source_branch: string;
+  target_branch: string;
+  source_agent_id?: string;
+  target_agent_id?: string;
+  verification_status: string;
+  context_summary?: string;
+  facts: Array<{
+    id: string;
+    fact_text: string;
+    category?: string;
+    confidence: number;
+    verification_status: string;
+  }>;
+  conversations: Array<{
+    id: string;
+    title?: string;
+    status: string;
+    message_count: number;
+    messages?: Array<{ role: string; content: string; sequence_num: number }>;
+  }>;
+  created_at?: string;
+}
+
+// === Knowledge Bundles ===
+
+export interface KnowledgeBundle {
+  id: string;
+  name: string;
+  description?: string;
+  version: number;
+  source_branch?: string;
+  source_task_id?: string;
+  fact_count: number;
+  conversation_count: number;
+  relation_count: number;
+  tags?: string[];
+  status: string;
+  created_by?: string;
+  created_at?: string;
+}
+
+export interface BundleImportResult {
+  bundle_id: string;
+  bundle_name: string;
+  target_branch: string;
+  facts_imported: number;
+  conversations_imported: number;
+  messages_imported: number;
+  relations_imported: number;
 }

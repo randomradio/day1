@@ -1,6 +1,12 @@
 import type {
   AnalyticsOverview,
+  AutoArchiveResult,
+  BatchVerifyResult,
   BranchListResponse,
+  BranchNameValidation,
+  BranchStats,
+  BranchTopologyNode,
+  BundleImportResult,
   CherryPickRequest,
   CherryPickResult,
   Conversation,
@@ -10,6 +16,10 @@ import type {
   CuratedBranchResult,
   DiffResponse,
   Fact,
+  HandoffPacket,
+  HandoffRecord,
+  KnowledgeBundle,
+  MergeGateResult,
   MergeResult,
   Message,
   MessageListResponse,
@@ -21,7 +31,13 @@ import type {
   SearchResult,
   SemanticDiff,
   Snapshot,
+  TTLExpiredBranch,
+  TemplateBranch,
+  TemplateInstantiateResult,
+  TemplateListResponse,
   TrendData,
+  VerificationResult,
+  VerificationSummary,
 } from '../types/schema';
 
 const API = '/api/v1';
@@ -297,4 +313,223 @@ export const api = {
 
   scoreSummary: (targetType: string, targetId: string) =>
     fetchJSON<ScoreSummary>(`${API}/scores/summary/${targetType}/${targetId}`),
+
+  // Branch Topology
+  getTopology: (rootBranch = 'main', maxDepth = 10, includeArchived = false) =>
+    fetchJSON<BranchTopologyNode>(
+      `${API}/branches/topology?root_branch=${rootBranch}&max_depth=${maxDepth}&include_archived=${includeArchived}`
+    ),
+
+  getBranchStats: (name: string) =>
+    fetchJSON<BranchStats>(`${API}/branches/${name}/stats`),
+
+  enrichBranch: (name: string, data: {
+    purpose?: string;
+    owner?: string;
+    ttl_days?: number;
+    tags?: string[];
+  }) =>
+    fetchJSON<{ branch_name: string; metadata: Record<string, unknown> }>(
+      `${API}/branches/${name}/enrich`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      }
+    ),
+
+  autoArchive: (inactiveDays = 30, archiveMerged = true, dryRun = false) =>
+    fetchJSON<AutoArchiveResult>(`${API}/branches/auto-archive`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        inactive_days: inactiveDays,
+        archive_merged: archiveMerged,
+        dry_run: dryRun,
+      }),
+    }),
+
+  getExpiredBranches: () =>
+    fetchJSON<{ expired: TTLExpiredBranch[]; count: number }>(
+      `${API}/branches/expired`
+    ),
+
+  validateBranchName: (name: string) =>
+    fetchJSON<BranchNameValidation>(`${API}/branches/validate-name`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ branch_name: name }),
+    }),
+
+  // Templates
+  listTemplates: (taskType?: string, status = 'active', limit = 20) => {
+    const qs = new URLSearchParams({ status, limit: String(limit) });
+    if (taskType) qs.set('task_type', taskType);
+    return fetchJSON<TemplateListResponse>(`${API}/templates?${qs}`);
+  },
+
+  getTemplate: (name: string) =>
+    fetchJSON<TemplateBranch>(`${API}/templates/${name}`),
+
+  createTemplate: (data: {
+    name: string;
+    source_branch: string;
+    description?: string;
+    applicable_task_types?: string[];
+    tags?: string[];
+    created_by?: string;
+  }) =>
+    fetchJSON<TemplateBranch>(`${API}/templates`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  instantiateTemplate: (name: string, targetBranch: string, taskId?: string) =>
+    fetchJSON<TemplateInstantiateResult>(
+      `${API}/templates/${name}/instantiate`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target_branch_name: targetBranch,
+          task_id: taskId,
+        }),
+      }
+    ),
+
+  updateTemplate: (name: string, sourceBranch: string, reason?: string) =>
+    fetchJSON<TemplateBranch>(`${API}/templates/${name}/update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_branch: sourceBranch, reason }),
+    }),
+
+  deprecateTemplate: (name: string) =>
+    fetchJSON<TemplateBranch>(`${API}/templates/${name}/deprecate`, {
+      method: 'POST',
+    }),
+
+  findTemplate: (taskType: string, taskDescription?: string) => {
+    const qs = new URLSearchParams({ task_type: taskType });
+    if (taskDescription) qs.set('task_description', taskDescription);
+    return fetchJSON<{ template: TemplateBranch | null }>(
+      `${API}/templates/find?${qs}`
+    );
+  },
+
+  // Verification
+  verifyFact: (factId: string, dimensions?: string[], context?: string) =>
+    fetchJSON<VerificationResult>(`${API}/facts/${factId}/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dimensions, context }),
+    }),
+
+  getVerificationStatus: (factId: string) =>
+    fetchJSON<Record<string, unknown>>(`${API}/facts/${factId}/verification`),
+
+  batchVerify: (branchName: string, limit = 50, onlyUnverified = true) =>
+    fetchJSON<BatchVerifyResult>(`${API}/verification/batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        branch_name: branchName,
+        limit,
+        only_unverified: onlyUnverified,
+      }),
+    }),
+
+  getVerifiedFacts: (branchName = 'main', category?: string, limit = 100) => {
+    const qs = new URLSearchParams({ branch_name: branchName, limit: String(limit) });
+    if (category) qs.set('category', category);
+    return fetchJSON<{ facts: Array<Record<string, unknown>> }>(
+      `${API}/verification/verified?${qs}`
+    );
+  },
+
+  checkMergeGate: (sourceBranch: string, requireVerified = true) =>
+    fetchJSON<MergeGateResult>(`${API}/verification/merge-gate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_branch: sourceBranch,
+        require_verified: requireVerified,
+      }),
+    }),
+
+  getVerificationSummary: (branchName: string) =>
+    fetchJSON<VerificationSummary>(`${API}/verification/summary/${branchName}`),
+
+  // Handoffs
+  createHandoff: (data: {
+    source_branch: string;
+    target_branch: string;
+    handoff_type?: string;
+    include_unverified?: boolean;
+    context_summary?: string;
+    fact_ids?: string[];
+    conversation_ids?: string[];
+  }) =>
+    fetchJSON<HandoffRecord>(`${API}/handoffs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  getHandoffPacket: (handoffId: string, includeMessages = true) =>
+    fetchJSON<HandoffPacket>(
+      `${API}/handoffs/${handoffId}?include_messages=${includeMessages}`
+    ),
+
+  listHandoffs: (params?: {
+    source_branch?: string;
+    target_branch?: string;
+    handoff_type?: string;
+    limit?: number;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params?.source_branch) qs.set('source_branch', params.source_branch);
+    if (params?.target_branch) qs.set('target_branch', params.target_branch);
+    if (params?.handoff_type) qs.set('handoff_type', params.handoff_type);
+    if (params?.limit) qs.set('limit', String(params.limit));
+    const q = qs.toString();
+    return fetchJSON<{ handoffs: HandoffRecord[] }>(
+      `${API}/handoffs${q ? `?${q}` : ''}`
+    );
+  },
+
+  // Knowledge Bundles
+  createBundle: (data: {
+    name: string;
+    source_branch: string;
+    description?: string;
+    tags?: string[];
+    only_verified?: boolean;
+    fact_ids?: string[];
+    conversation_ids?: string[];
+  }) =>
+    fetchJSON<KnowledgeBundle>(`${API}/bundles`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  listBundles: (status = 'active', limit = 20) =>
+    fetchJSON<{ bundles: KnowledgeBundle[] }>(
+      `${API}/bundles?status=${status}&limit=${limit}`
+    ),
+
+  getBundle: (bundleId: string) =>
+    fetchJSON<KnowledgeBundle>(`${API}/bundles/${bundleId}`),
+
+  exportBundle: (bundleId: string) =>
+    fetchJSON<Record<string, unknown>>(`${API}/bundles/${bundleId}/export`),
+
+  importBundle: (bundleId: string, targetBranch: string) =>
+    fetchJSON<BundleImportResult>(`${API}/bundles/${bundleId}/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_branch: targetBranch }),
+    }),
 };

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Branch, DiffRow, Fact } from '../types/schema';
+import type { Branch, BranchTopologyNode, BranchStats, AutoArchiveResult, DiffRow, Fact } from '../types/schema';
 import { api } from '../api/client';
 
 interface BranchStore {
@@ -8,6 +8,8 @@ interface BranchStore {
   activeBranch: string;
   facts: Fact[];
   diffs: DiffRow[];
+  topology: BranchTopologyNode | null;
+  branchStats: BranchStats | null;
   loading: boolean;
   error: string | null;
   searchQuery: string;
@@ -26,6 +28,10 @@ interface BranchStore {
   fetchDiff: (source: string, target?: string) => Promise<void>;
   mergeBranch: (source: string, target: string, strategy: string, conflict?: string) => Promise<void>;
   timeTravel: (timestamp: string) => Promise<void>;
+  fetchTopology: (includeArchived?: boolean) => Promise<void>;
+  fetchBranchStats: (branchName: string) => Promise<void>;
+  enrichBranch: (name: string, data: { purpose?: string; owner?: string; ttl_days?: number; tags?: string[] }) => Promise<void>;
+  autoArchive: (inactiveDays?: number, archiveMerged?: boolean, dryRun?: boolean) => Promise<AutoArchiveResult>;
   clearError: () => void;
 }
 
@@ -34,6 +40,8 @@ export const useBranchStore = create<BranchStore>((set, get) => ({
   activeBranch: 'main',
   facts: [],
   diffs: [],
+  topology: null,
+  branchStats: null,
   loading: false,
   error: null,
   searchQuery: '',
@@ -118,6 +126,49 @@ export const useBranchStore = create<BranchStore>((set, get) => ({
       set({ timeTravelResults: data.results, loading: false });
     } catch (e) {
       set({ error: (e as Error).message, loading: false });
+    }
+  },
+
+  fetchTopology: async (includeArchived = false) => {
+    set({ loading: true, error: null });
+    try {
+      const tree = await api.getTopology('main', 10, includeArchived);
+      set({ topology: tree, loading: false });
+    } catch (e) {
+      set({ error: (e as Error).message, loading: false });
+    }
+  },
+
+  fetchBranchStats: async (branchName) => {
+    try {
+      const stats = await api.getBranchStats(branchName);
+      set({ branchStats: stats });
+    } catch (e) {
+      console.debug('Failed to fetch branch stats:', e);
+    }
+  },
+
+  enrichBranch: async (name, data) => {
+    set({ loading: true, error: null });
+    try {
+      await api.enrichBranch(name, data);
+      await get().fetchBranches();
+      set({ loading: false });
+    } catch (e) {
+      set({ error: (e as Error).message, loading: false });
+    }
+  },
+
+  autoArchive: async (inactiveDays = 30, archiveMerged = true, dryRun = false) => {
+    set({ loading: true, error: null });
+    try {
+      const result = await api.autoArchive(inactiveDays, archiveMerged, dryRun);
+      if (!dryRun) await get().fetchBranches();
+      set({ loading: false });
+      return result;
+    } catch (e) {
+      set({ error: (e as Error).message, loading: false });
+      throw e;
     }
   },
 }));

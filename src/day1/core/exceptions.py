@@ -59,3 +59,27 @@ class ReplayError(Day1Error):
 
 class AnalyticsError(Day1Error):
     """Analytics computation failed."""
+
+
+class BranchTopologyError(Day1Error):
+    """Branch topology operation failed."""
+
+
+class TemplateNotFoundError(Day1Error):
+    """Requested template does not exist."""
+
+
+class TemplateError(Day1Error):
+    """Template operation failed."""
+
+
+class VerificationError(Day1Error):
+    """Fact or conversation verification failed."""
+
+
+class HandoffError(Day1Error):
+    """Task handoff operation failed."""
+
+
+class KnowledgeBundleError(Day1Error):
+    """Knowledge bundle operation failed."""

@@ -364,6 +364,46 @@ class ConsolidationHistory(Base):
 # === Scoring ===
 
 
+# === Template Branches ===
+
+
+class TemplateBranch(Base):
+    """Registry for reusable branch templates.
+
+    This is a metadata/registry table — it does NOT participate in DATA BRANCH
+    operations.  Template content lives in actual branches managed by
+    BranchManager.  Uses native JSON (not JsonText).
+    """
+
+    __tablename__ = "template_branches"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    branch_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    source_branch: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    applicable_task_types: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    tags: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    fact_count: Mapped[int] = mapped_column(Integer, default=0)
+    conversation_count: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    created_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    metadata_json: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        Index("idx_template_name", "name"),
+        Index("idx_template_status", "status"),
+    )
+
+
+# === Scoring ===
+
+
 class Score(Base):
     """A score applied to a message, conversation, or replay."""
 
@@ -389,4 +429,75 @@ class Score(Base):
         Index("idx_score_dimension", "dimension"),
         Index("idx_score_branch", "branch_name"),
         Index("idx_score_created", "created_at"),
+    )
+
+
+# === Handoff Records ===
+
+
+class HandoffRecord(Base):
+    """Audit trail for task handoff events.
+
+    Metadata/registry table — does NOT participate in DATA BRANCH operations.
+    Uses native JSON (not JsonText).
+    """
+
+    __tablename__ = "handoff_records"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    source_task_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    target_task_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    source_branch: Mapped[str] = mapped_column(String(100), nullable=False)
+    target_branch: Mapped[str] = mapped_column(String(100), nullable=False)
+    source_agent_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    target_agent_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    handoff_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    fact_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    conversation_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    context_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    verification_status: Mapped[str] = mapped_column(String(20), default="pending")
+    metadata_json: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        Index("idx_handoff_source", "source_branch"),
+        Index("idx_handoff_target", "target_branch"),
+        Index("idx_handoff_type", "handoff_type"),
+        Index("idx_handoff_created", "created_at"),
+    )
+
+
+# === Knowledge Bundles ===
+
+
+class KnowledgeBundle(Base):
+    """Portable, serialized knowledge package for export/import.
+
+    Metadata/registry table — does NOT participate in DATA BRANCH operations.
+    Uses native JSON (not JsonText).
+    """
+
+    __tablename__ = "knowledge_bundles"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    source_branch: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    source_task_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    fact_count: Mapped[int] = mapped_column(Integer, default=0)
+    conversation_count: Mapped[int] = mapped_column(Integer, default=0)
+    relation_count: Mapped[int] = mapped_column(Integer, default=0)
+    bundle_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    tags: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    created_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    metadata_json: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        Index("idx_bundle_name", "name"),
+        Index("idx_bundle_status", "status"),
+        Index("idx_bundle_source", "source_branch"),
+        Index("idx_bundle_created", "created_at"),
     )

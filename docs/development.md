@@ -32,10 +32,10 @@ uv run python scripts/test_mo_features.py
 # Or connect directly via mycli/mysql for debugging
 mycli -h freetier-01.cn-hangzhou.cluster.matrixonecloud.cn -P 6001 \
   -u "0193bd50-818d-76ba-bb43-a2abd031d6e5:admin:accountadmin" \
-  -p"AIcon2024" branchedmind
+  -p"AIcon2024" day1
 
 # Override connection via env var if needed
-export BM_DATABASE_URL="mysql+aiomysql://0193bd50-818d-76ba-bb43-a2abd031d6e5%3Aadmin%3Aaccountadmin:AIcon2024@freetier-01.cn-hangzhou.cluster.matrixonecloud.cn:6001/branchedmind"
+export BM_DATABASE_URL="mysql+aiomysql://0193bd50-818d-76ba-bb43-a2abd031d6e5%3Aadmin%3Aaccountadmin:AIcon2024@freetier-01.cn-hangzhou.cluster.matrixonecloud.cn:6001/day1"
 ```
 
 ### Option B: Local Docker
@@ -48,7 +48,7 @@ docker run -d -p 6001:6001 --name matrixone matrixorigin/matrixone:latest
 docker logs -f matrixone
 
 # Set connection string (local)
-export BM_DATABASE_URL="mysql+aiomysql://root:111@127.0.0.1:6001/branchedmind"
+export BM_DATABASE_URL="mysql+aiomysql://root:111@127.0.0.1:6001/day1"
 
 # Connect directly (for debugging)
 docker exec -it matrixone mysql -h 127.0.0.1 -P 6001 -uroot -p111
@@ -130,7 +130,7 @@ uv run pytest -m "not integration"
 uv run pytest -m integration
 
 # Use a specific MO connection for tests
-BM_TEST_DATABASE_URL="mysql+aiomysql://root:111@localhost:6001/branchedmind_test" uv run pytest
+BM_TEST_DATABASE_URL="mysql+aiomysql://root:111@localhost:6001/day1_test" uv run pytest
 ```
 
 ## Linting & Type Checking
