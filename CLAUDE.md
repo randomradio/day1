@@ -43,12 +43,37 @@ Main branch uses base tables (`facts`, `relations`, `observations`). Feature bra
 | `docs/code_practices.md` | Writing/modifying Python code |
 | `docs/development.md` | Setting up env, running tests, building |
 | `docs/architecture.md` | Understanding system design, integration points |
+| `docs/architecture-decisions.md` | Architecture decisions, discussion log, evolution plans |
 | `docs/mcp_tools.md` | Adding/modifying MCP server tools |
 | `docs/dashboard.md` | Building/working on frontend dashboard |
 
 ## Key Differentiators
 
 Unlike `claude-mem`, Day1 adds: branch/merge, PITR/time-travel, multi-agent isolation, knowledge graph.
+
+## Engine Architecture (21 Core Engines)
+
+| Category | Engines | LLM Dependency |
+|----------|---------|----------------|
+| Write | FactEngine, MessageEngine, ObservationEngine, RelationEngine | None (embedding only) |
+| Query | SearchEngine, AnalyticsEngine, SessionManager | None |
+| Branch | BranchManager, MergeEngine, SnapshotManager | None |
+| Conversation | ConversationEngine, CherryPick, ReplayEngine | None |
+| Task | TaskEngine, ConsolidationEngine | None |
+| Analysis | SemanticDiffEngine, ScoringEngine | ScoringEngine only |
+| Infrastructure | EmbeddingProvider, LLMClient | By design |
+
+**Pure memory layer principle**: Only 1 of 21 engines (ScoringEngine) calls LLM directly. All others are transport-agnostic.
+
+## Architecture Evolution
+
+Active decisions and roadmap are tracked in `docs/architecture-decisions.md`.
+
+Current focus areas:
+- **Branch Topology Management** — Lifecycle policies, metadata enrichment, hierarchical visualization for 100+ branches
+- **Template Branches** — Package curated knowledge into reusable templates, version management, fork-to-start
+
+Knowledge evolution chain: `Raw Execution → Consolidation → Curation → Template → Reuse`
 
 ---
 
