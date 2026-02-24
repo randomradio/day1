@@ -24,15 +24,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Core Data Model
 
 ```
-facts              - Structured facts with vector embeddings
-relations          - Entity relationship graph
-observations       - Tool call observation records
-sessions           - Session tracking
-branch_registry    - Branch registry
-merge_history      - Audit trail for merges
+Layer 2 (Memory):   facts, relations, observations    — structured knowledge with vector embeddings
+Layer 1 (History):  conversations, messages            — raw chat history with sequence ordering
+Metadata:           branch_registry, merge_history     — branch lifecycle tracking
+Coordination:       sessions, tasks, task_agents       — multi-agent task management
+Evaluation:         scores, consolidation_history      — quality scoring and audit
+Time Travel:        snapshots                          — point-in-time recovery
 ```
 
-Main branch uses base tables (`facts`, `relations`, `observations`). Feature branches use suffixed tables (e.g. `facts_feature_x`, `relations_feature_x`) created via `DATA BRANCH CREATE TABLE`.
+All 5 core tables (`facts`, `relations`, `observations`, `conversations`, `messages`) participate in DATA BRANCH operations. Feature branches use suffixed tables (e.g. `facts_feature_x`) created via `DATA BRANCH CREATE TABLE`.
 
 ## Progressive Disclosure
 
@@ -139,3 +139,39 @@ Use memory_write_fact with:
 # Create snapshot to revert if needed
 Use memory_snapshot with label describing the change
 ```
+
+---
+
+## Documentation Maintenance Rules
+
+**IMPORTANT**: Follow these rules to keep docs in sync with code.
+
+### When to Update CLAUDE.md
+
+- After adding/removing engines, MCP tools, or API route files
+- After changing the data model (new tables, new columns)
+- After architectural decisions that affect the system design
+- After completing a major feature or phase
+
+### When to Update docs/architecture-decisions.md
+
+- After any architecture discussion or decision
+- When deferring a feature — record why
+- When encountering and fixing a bug — record the pattern to prevent recurrence
+- Use timestamp format: `## YYYY-MM-DD: [Topic]`
+
+### When to Update docs/architecture.md
+
+- After adding/removing integration points (engines, tools, endpoints, hooks)
+- After changing the branch model or data layer structure
+- After file path changes (renames, moves)
+
+### Error Log & Lessons Learned
+
+Record mistakes here to avoid repeating them:
+
+| Date | Error | Root Cause | Prevention |
+|------|-------|------------|------------|
+| 2026-02-24 | `docs/architecture.md` had stale `branchedmind/` paths for months | Rename refactor didn't update docs | Always grep docs/ after file renames |
+| 2026-02-24 | `docs/plan.md` still showed "planned" for implemented phases | No habit of marking completed work in docs | Mark phases done immediately after commit |
+| 2026-02-24 | `docs/mcp_tools.md` only listed 12 of 29 tools | New tools added without doc updates | Update mcp_tools.md when adding tools to tools.py |
