@@ -19,12 +19,12 @@ Day1 system design and integration points. Read this when understanding how comp
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
 │  │ Claude Code   │  │  MCP Server  │  │   REST API   │  │
 │  │  Plugin       │  │ (stdio/SSE)  │  │  (FastAPI)   │  │
-│  │ (11 Hooks)    │  │  34 tools    │  │  68+ endpts  │  │
+│  │ (11 Hooks)    │  │  42 tools    │  │  85+ endpts  │  │
 │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  │
 │         └──────────────────┼─────────────────┘          │
 │                            ▼                             │
 │  ┌──────────────────────────────────────────────────┐   │
-│  │         Core Engine Layer (23 engines)            │   │
+│  │         Core Engine Layer (26 engines)            │   │
 │  │                                                   │   │
 │  │  Write:  Fact │ Message │ Observation │ Relation  │   │
 │  │  Query:  Search │ Analytics │ SessionManager      │   │
@@ -32,6 +32,7 @@ Day1 system design and integration points. Read this when understanding how comp
 │  │  Conv:   Conversation │ CherryPick │ Replay       │   │
 │  │  Task:   TaskEngine │ Consolidation               │   │
 │  │  Tmpl:   TemplateEngine                           │   │
+│  │  Cura:   Verification │ Handoff │ KnowledgeBundle │   │
 │  │  Eval:   SemanticDiff │ Scoring (LLM-as-judge)    │   │
 │  └───────────────────────┬──────────────────────────┘   │
 │                          ▼                               │
@@ -50,6 +51,7 @@ Day1 system design and integration points. Read this when understanding how comp
 │  │  branch_registry, merge_history   (Metadata)       │  │
 │  │  sessions, tasks, task_agents     (Coordination)   │  │
 │  │  template_branches                (Templates)      │  │
+│  │  handoff_records, knowledge_bundles (Curation)     │  │
 │  │  scores, consolidation_history    (Evaluation)     │  │
 │  │  snapshots                        (Time Travel)    │  │
 │  └──────────────────────────────────────────────────┘   │
@@ -60,6 +62,7 @@ Day1 system design and integration points. Read this when understanding how comp
 │  │  MergePanel │ Timeline │ SearchBar │ FactDetail    │  │
 │  │  ReplayList │ SemanticDiffView │ AnalyticsDashboard│  │
 │  │  BranchTopologyPanel │ TemplateList │ CreateWizard │  │
+│  │  VerificationPanel │ HandoffPanel │ BundlePanel  │  │
 │  └──────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -105,9 +108,10 @@ Each branch = a set of suffixed tables (zero-copy, CoW via DATA BRANCH):
 | Branch | BranchManager, MergeEngine, SnapshotManager | No | MergeEngine: for conflict detection |
 | Conversation | ConversationEngine, ConversationCherryPick, ReplayEngine | No | No |
 | Task | TaskEngine, ConsolidationEngine | No | No |
+| Curation | VerificationEngine, HandoffEngine, KnowledgeBundleEngine | **VerificationEngine only** | No |
 | Evaluation | SemanticDiffEngine, ScoringEngine | **ScoringEngine only** | SemanticDiff: for reasoning comparison |
 
-**Pure memory layer principle**: Only 1 of 19 engines calls LLM directly. Embedding failures are non-blocking — all write engines save content with `embedding=None` on failure and can be backfilled later.
+**Pure memory layer principle**: Only 2 of 26 engines call LLM directly (ScoringEngine and VerificationEngine). Both gracefully degrade to heuristic-based scoring when LLM is unavailable. Embedding failures are non-blocking — all write engines save content with `embedding=None` on failure and can be backfilled later.
 
 ### Merge Strategies
 
@@ -130,7 +134,7 @@ Task facts          → consolidate_task()    → durable (≥0.8 confidence) pr
 
 ## Integration Points
 
-### 1. MCP Server (29 tools)
+### 1. MCP Server (42 tools)
 
 Standard interface for any MCP-compatible client. Tool categories:
 
@@ -143,6 +147,11 @@ Standard interface for any MCP-compatible client. Tool categories:
 | Task | `memory_task_create`, `memory_task_join`, `memory_task_status`, `memory_task_update`, `memory_consolidate`, `memory_search_task`, `memory_agent_timeline`, `memory_replay_task_type` | 8 |
 | Conversation | `memory_log_message`, `memory_list_conversations`, `memory_search_messages`, `memory_fork_conversation`, `memory_cherry_pick_conversation` | 5 |
 | Curation | `memory_branch_create_curated`, `memory_session_context` | 2 |
+| Topology | `memory_branch_topology`, `memory_branch_enrich` | 2 |
+| Templates | `memory_template_list`, `memory_template_create`, `memory_template_instantiate` | 3 |
+| Verification | `verify_fact`, `verify_batch`, `verify_merge_gate` | 3 |
+| Handoff | `memory_handoff_create`, `memory_handoff_get` | 2 |
+| Bundles | `knowledge_bundle_create`, `knowledge_bundle_import`, `knowledge_bundle_list` | 3 |
 
 ### 2. Claude Code Plugin (11 Hooks)
 

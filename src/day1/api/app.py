@@ -22,8 +22,10 @@ from day1.api.routes import (
     analytics,
     branch_topology,
     branches,
+    bundles,
     conversations,
     facts,
+    handoffs,
     messages,
     observations,
     relations,
@@ -34,6 +36,7 @@ from day1.api.routes import (
     snapshots,
     tasks,
     templates,
+    verification,
 )
 from day1.db.engine import init_db
 
@@ -138,6 +141,10 @@ app.include_router(snapshots.router, prefix="/api/v1", tags=["snapshots"], depen
 app.include_router(replays.router, prefix="/api/v1", tags=["replays"], dependencies=_auth)
 app.include_router(analytics.router, prefix="/api/v1", tags=["analytics"], dependencies=_auth)
 app.include_router(scores.router, prefix="/api/v1", tags=["scores"], dependencies=_auth)
+# Verification routes (before facts to handle /facts/{id}/verify)
+app.include_router(verification.router, prefix="/api/v1", tags=["verification"], dependencies=_auth)
+app.include_router(handoffs.router, prefix="/api/v1", tags=["handoffs"], dependencies=_auth)
+app.include_router(bundles.router, prefix="/api/v1", tags=["bundles"], dependencies=_auth)
 
 
 @app.get("/health")

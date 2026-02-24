@@ -59,7 +59,7 @@ async def db_session():
         # First, drop any branch tables (suffixed versions of base tables)
         result = await conn.execute(text("SHOW TABLES"))
         all_tables = [row[0] for row in result.fetchall()]
-        base_tables = {"facts", "relations", "observations", "conversations", "messages", "branch_registry", "merge_history", "sessions", "template_branches"}
+        base_tables = {"facts", "relations", "observations", "conversations", "messages", "branch_registry", "merge_history", "sessions", "template_branches", "handoff_records", "knowledge_bundles"}
         for tbl in all_tables:
             if tbl not in base_tables:
                 try:
@@ -91,7 +91,7 @@ async def db_session():
     # Cleanup: drop ALL tables including DATA BRANCH tables
     async with engine.begin() as conn:
         # Drop branch tables first
-        base_tables = {"facts", "relations", "observations", "conversations", "messages", "branch_registry", "merge_history", "sessions", "template_branches"}
+        base_tables = {"facts", "relations", "observations", "conversations", "messages", "branch_registry", "merge_history", "sessions", "template_branches", "handoff_records", "knowledge_bundles"}
         result = await conn.execute(text("SHOW TABLES"))
         all_tables = [row[0] for row in result.fetchall()]
         for tbl in all_tables:

@@ -504,9 +504,118 @@ tool("memory_template_instantiate", {
 # Returns: { "branch_name": str, "template_name": str, "template_version": int, "facts_inherited": int }
 ```
 
+## Verification
+
+### verify_fact
+
+Verify a fact using LLM-as-judge. Evaluates accuracy, relevance, specificity.
+
+```python
+tool("verify_fact", {
+    "fact_id": str,              # Required: Fact ID to verify
+    "dimensions": list[str],     # Optional: Evaluation dimensions
+    "context": str | None,       # Optional: Additional context
+})
+# Returns: { "fact_id": str, "verdict": str, "reason": str, "scores": [...] }
+```
+
+### verify_batch
+
+Batch-verify all unverified facts on a branch.
+
+```python
+tool("verify_batch", {
+    "branch_name": str | None,   # Optional: Branch to verify
+    "limit": int | None,         # Optional: Max facts (default: 50)
+    "only_unverified": bool,     # Optional: Skip verified (default: true)
+})
+# Returns: { "total_processed": int, "verified": int, "invalidated": int, ... }
+```
+
+### verify_merge_gate
+
+Check if a branch passes the verification merge gate.
+
+```python
+tool("verify_merge_gate", {
+    "source_branch": str,        # Required: Branch to check
+    "require_verified": bool,    # Optional: Require all verified (default: true)
+})
+# Returns: { "can_merge": bool, "verified": int, "unverified": int, ... }
+```
+
+## Handoff
+
+### memory_handoff_create
+
+Create a structured handoff between branches/agents with verified facts.
+
+```python
+tool("memory_handoff_create", {
+    "source_branch": str,        # Required: Source branch
+    "target_branch": str,        # Required: Target branch
+    "handoff_type": str,         # Optional: task_continuation, agent_switch, etc.
+    "include_unverified": bool,  # Optional: Include unverified facts (default: false)
+    "context_summary": str,      # Optional: Manual summary
+})
+# Returns: { "handoff_id": str, "fact_count": int, "conversation_count": int, ... }
+```
+
+### memory_handoff_get
+
+Retrieve the full handoff packet for a receiving agent.
+
+```python
+tool("memory_handoff_get", {
+    "handoff_id": str,           # Required: Handoff record ID
+})
+# Returns: { "facts": [...], "conversations": [...], "context_summary": str, ... }
+```
+
+## Knowledge Bundles
+
+### knowledge_bundle_create
+
+Create a portable knowledge bundle from a branch.
+
+```python
+tool("knowledge_bundle_create", {
+    "name": str,                 # Required: Bundle name
+    "source_branch": str,        # Required: Branch to export from
+    "description": str | None,   # Optional: Description
+    "tags": list[str] | None,   # Optional: Discovery tags
+    "only_verified": bool,       # Optional: Only verified facts (default: true)
+})
+# Returns: { "id": str, "name": str, "fact_count": int, ... }
+```
+
+### knowledge_bundle_import
+
+Import a knowledge bundle into a target branch.
+
+```python
+tool("knowledge_bundle_import", {
+    "bundle_id": str,            # Required: Bundle to import
+    "target_branch": str,        # Required: Target branch
+})
+# Returns: { "facts_imported": int, "conversations_imported": int, ... }
+```
+
+### knowledge_bundle_list
+
+List available knowledge bundles.
+
+```python
+tool("knowledge_bundle_list", {
+    "status": str | None,        # Optional: active, deprecated (default: active)
+    "limit": int | None,         # Optional: Max results (default: 20)
+})
+# Returns: { "bundles": [...] }
+```
+
 ## Implementation File
 
-- **Definition & Handlers**: `src/day1/mcp/tools.py` (34 tools)
+- **Definition & Handlers**: `src/day1/mcp/tools.py` (42 tools)
 - **MCP Server**: `src/day1/mcp/mcp_server.py` (stdio mode)
 - **MCP HTTP Server**: `src/day1/mcp/mcp_server_http.py` (SSE mode)
 - **Handler pattern**: Each tool = async function dispatched via `handle_tool_call()`

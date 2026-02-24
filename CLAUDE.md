@@ -29,6 +29,7 @@ Layer 1 (History):  conversations, messages            — raw chat history with
 Metadata:           branch_registry, merge_history     — branch lifecycle tracking
 Coordination:       sessions, tasks, task_agents       — multi-agent task management
 Templates:          template_branches                  — reusable knowledge template registry
+Curation:           handoff_records, knowledge_bundles — verified handoffs and portable packages
 Evaluation:         scores, consolidation_history      — quality scoring and audit
 Time Travel:        snapshots                          — point-in-time recovery
 ```
@@ -52,20 +53,21 @@ All 5 core tables (`facts`, `relations`, `observations`, `conversations`, `messa
 
 Unlike `claude-mem`, Day1 adds: branch/merge, PITR/time-travel, multi-agent isolation, knowledge graph.
 
-## Engine Architecture (23 Core Engines)
+## Engine Architecture (26 Core Engines)
 
 | Category | Engines | LLM Dependency |
 |----------|---------|----------------|
 | Write | FactEngine, MessageEngine, ObservationEngine, RelationEngine | None (embedding only) |
 | Query | SearchEngine, AnalyticsEngine, SessionManager | None |
-| Branch | BranchManager, MergeEngine, SnapshotManager, **BranchTopologyEngine** | None |
+| Branch | BranchManager, MergeEngine, SnapshotManager, BranchTopologyEngine | None |
 | Conversation | ConversationEngine, CherryPick, ReplayEngine | None |
 | Task | TaskEngine, ConsolidationEngine | None |
-| Templates | **TemplateEngine** | None |
+| Templates | TemplateEngine | None |
+| Curation | **VerificationEngine**, **HandoffEngine**, **KnowledgeBundleEngine** | VerificationEngine only |
 | Analysis | SemanticDiffEngine, ScoringEngine | ScoringEngine only |
 | Infrastructure | EmbeddingProvider, LLMClient | By design |
 
-**Pure memory layer principle**: Only 1 of 23 engines (ScoringEngine) calls LLM directly. All others are transport-agnostic.
+**Pure memory layer principle**: Only 2 of 26 engines (ScoringEngine and VerificationEngine) call LLM directly. Both degrade gracefully to heuristic scoring. All others are transport-agnostic.
 
 ## Architecture Evolution
 
@@ -74,8 +76,9 @@ Active decisions and roadmap are tracked in `docs/architecture-decisions.md`.
 Implemented (2026-02-24):
 - **Branch Topology Management** — BranchTopologyEngine: lifecycle policies, auto-archive, TTL expiry, metadata enrichment, hierarchical tree, naming validation
 - **Template Branches** — TemplateEngine + TemplateBranch model: create/version/instantiate/find templates, fork-to-start for new agents
+- **Knowledge Curation** — VerificationEngine (LLM-as-judge for facts, merge gate), HandoffEngine (structured task handoff with verified facts), KnowledgeBundleEngine (portable export/import)
 
-Knowledge evolution chain: `Raw Execution → Consolidation → Curation → Template → Reuse`
+Knowledge evolution chain: `Raw Execution → Consolidation → Verification → Curation → Template/Bundle → Reuse`
 
 ---
 

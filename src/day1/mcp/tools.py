@@ -26,7 +26,10 @@ from day1.core.semantic_diff import SemanticDiffEngine
 from day1.core.session_manager import SessionManager
 from day1.core.snapshot_manager import SnapshotManager
 from day1.core.task_engine import TaskEngine
+from day1.core.handoff_engine import HandoffEngine
+from day1.core.knowledge_bundle_engine import KnowledgeBundleEngine
 from day1.core.template_engine import TemplateEngine
+from day1.core.verification_engine import VerificationEngine
 
 # ---- Tool Definitions ----
 
@@ -1224,6 +1227,220 @@ TOOL_DEFINITIONS: list[Tool] = [
             "required": ["template_name", "target_branch_name"],
         },
     ),
+    # === Verification ===
+    Tool(
+        name="verify_fact",
+        description=(
+            "Verify a fact using LLM-as-judge. Evaluates accuracy,"
+            " relevance, and specificity. Updates the fact's verification"
+            " status to verified, unverified, or invalidated."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "fact_id": {
+                    "type": "string",
+                    "description": "Fact ID to verify",
+                },
+                "dimensions": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Dimensions to evaluate (default: accuracy,"
+                        " relevance, specificity)"
+                    ),
+                },
+                "context": {
+                    "type": "string",
+                    "description": "Additional context for the verifier",
+                },
+            },
+            "required": ["fact_id"],
+        },
+    ),
+    Tool(
+        name="verify_batch",
+        description=(
+            "Batch-verify all unverified facts on a branch."
+            " Returns counts of verified, invalidated, and unverified facts."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "branch_name": {
+                    "type": "string",
+                    "description": "Branch to verify (default: active branch)",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max facts to verify (default: 50)",
+                },
+                "only_unverified": {
+                    "type": "boolean",
+                    "description": "Skip already-verified facts (default: true)",
+                },
+            },
+        },
+    ),
+    Tool(
+        name="verify_merge_gate",
+        description=(
+            "Check if a branch passes the verification merge gate."
+            " Returns whether all facts are verified and can be merged."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "source_branch": {
+                    "type": "string",
+                    "description": "Branch to check",
+                },
+                "require_verified": {
+                    "type": "boolean",
+                    "description": "Require all facts to be verified (default: true)",
+                },
+            },
+            "required": ["source_branch"],
+        },
+    ),
+    # === Handoff ===
+    Tool(
+        name="memory_handoff_create",
+        description=(
+            "Create a structured handoff between branches/agents."
+            " Freezes context (verified facts + conversations) and creates"
+            " an audit trail. Use this when handing off work to another"
+            " agent or session."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "source_branch": {
+                    "type": "string",
+                    "description": "Branch with the source context",
+                },
+                "target_branch": {
+                    "type": "string",
+                    "description": "Branch receiving the handoff",
+                },
+                "handoff_type": {
+                    "type": "string",
+                    "enum": [
+                        "task_continuation",
+                        "agent_switch",
+                        "session_handoff",
+                        "escalation",
+                    ],
+                    "description": "Type of handoff (default: task_continuation)",
+                },
+                "include_unverified": {
+                    "type": "boolean",
+                    "description": "Include unverified facts (default: false)",
+                },
+                "context_summary": {
+                    "type": "string",
+                    "description": "Manual context summary",
+                },
+            },
+            "required": ["source_branch", "target_branch"],
+        },
+    ),
+    Tool(
+        name="memory_handoff_get",
+        description=(
+            "Retrieve the full handoff packet for a receiving agent."
+            " Returns all facts, conversations, and context summary."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "handoff_id": {
+                    "type": "string",
+                    "description": "Handoff record ID",
+                },
+            },
+            "required": ["handoff_id"],
+        },
+    ),
+    # === Knowledge Bundles ===
+    Tool(
+        name="knowledge_bundle_create",
+        description=(
+            "Create a portable knowledge bundle from a branch."
+            " Serializes verified facts, conversations, and relations"
+            " into a transferable package."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Bundle name",
+                },
+                "source_branch": {
+                    "type": "string",
+                    "description": "Branch to export from",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Bundle description",
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Discovery tags",
+                },
+                "only_verified": {
+                    "type": "boolean",
+                    "description": "Only include verified facts (default: true)",
+                },
+            },
+            "required": ["name", "source_branch"],
+        },
+    ),
+    Tool(
+        name="knowledge_bundle_import",
+        description=(
+            "Import a knowledge bundle into a target branch."
+            " Creates facts, conversations, and relations from"
+            " the bundle's serialized data."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "bundle_id": {
+                    "type": "string",
+                    "description": "Bundle to import",
+                },
+                "target_branch": {
+                    "type": "string",
+                    "description": "Branch to import into",
+                },
+            },
+            "required": ["bundle_id", "target_branch"],
+        },
+    ),
+    Tool(
+        name="knowledge_bundle_list",
+        description=(
+            "List available knowledge bundles. Bundles are portable"
+            " knowledge packages that can be imported into any branch."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": ["active", "deprecated"],
+                    "description": "Filter by status (default: active)",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results (default: 20)",
+                },
+            },
+        },
+    ),
 ]
 
 
@@ -1803,6 +2020,74 @@ async def handle_tool_call(
             target_branch_name=arguments["target_branch_name"],
             task_id=arguments.get("task_id"),
         )
+
+    # === Verification ===
+    elif name == "verify_fact":
+        engine = VerificationEngine(session)
+        return await engine.verify_fact(
+            fact_id=arguments["fact_id"],
+            dimensions=arguments.get("dimensions"),
+            context=arguments.get("context"),
+        )
+
+    elif name == "verify_batch":
+        engine = VerificationEngine(session)
+        return await engine.batch_verify(
+            branch_name=arguments.get("branch_name", branch),
+            limit=arguments.get("limit", 50),
+            only_unverified=arguments.get("only_unverified", True),
+        )
+
+    elif name == "verify_merge_gate":
+        engine = VerificationEngine(session)
+        return await engine.check_merge_gate(
+            source_branch=arguments["source_branch"],
+            require_verified=arguments.get("require_verified", True),
+        )
+
+    # === Handoff ===
+    elif name == "memory_handoff_create":
+        engine = HandoffEngine(session)
+        return await engine.create_handoff(
+            source_branch=arguments["source_branch"],
+            target_branch=arguments["target_branch"],
+            handoff_type=arguments.get("handoff_type", "task_continuation"),
+            include_unverified=arguments.get("include_unverified", False),
+            context_summary=arguments.get("context_summary"),
+        )
+
+    elif name == "memory_handoff_get":
+        engine = HandoffEngine(session)
+        return await engine.get_handoff_packet(
+            handoff_id=arguments["handoff_id"],
+        )
+
+    # === Knowledge Bundles ===
+    elif name == "knowledge_bundle_create":
+        engine = KnowledgeBundleEngine(session)
+        return await engine.create_bundle(
+            name=arguments["name"],
+            source_branch=arguments["source_branch"],
+            description=arguments.get("description"),
+            tags=arguments.get("tags"),
+            only_verified=arguments.get("only_verified", True),
+        )
+
+    elif name == "knowledge_bundle_import":
+        engine = KnowledgeBundleEngine(session)
+        return await engine.import_bundle(
+            bundle_id=arguments["bundle_id"],
+            target_branch=arguments["target_branch"],
+        )
+
+    elif name == "knowledge_bundle_list":
+        engine = KnowledgeBundleEngine(session)
+        return {
+            "bundles": await engine.list_bundles(
+                status=arguments.get("status", "active"),
+                limit=arguments.get("limit", 20),
+            )
+        }
 
     else:
         return {"error": f"Unknown tool: {name}"}

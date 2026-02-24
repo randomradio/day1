@@ -71,3 +71,15 @@ class TemplateNotFoundError(Day1Error):
 
 class TemplateError(Day1Error):
     """Template operation failed."""
+
+
+class VerificationError(Day1Error):
+    """Fact or conversation verification failed."""
+
+
+class HandoffError(Day1Error):
+    """Task handoff operation failed."""
+
+
+class KnowledgeBundleError(Day1Error):
+    """Knowledge bundle operation failed."""

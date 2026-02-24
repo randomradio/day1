@@ -380,3 +380,112 @@ export interface ScoreSummary {
   target_id: string;
   dimensions: Record<string, { avg: number; count: number; min: number; max: number }>;
 }
+
+// === Verification ===
+
+export interface VerificationResult {
+  fact_id: string;
+  verdict: string;
+  reason: string;
+  scores: Array<{
+    id: string;
+    dimension: string;
+    value: number;
+    explanation: string;
+  }>;
+}
+
+export interface BatchVerifyResult {
+  branch_name: string;
+  total_processed: number;
+  verified: number;
+  invalidated: number;
+  unverified: number;
+  details: VerificationResult[];
+}
+
+export interface MergeGateResult {
+  source_branch: string;
+  can_merge: boolean;
+  total_facts: number;
+  verified: number;
+  unverified: number;
+  invalidated: number;
+  unverified_facts: Array<{ id: string; fact_text: string; category?: string }>;
+}
+
+export interface VerificationSummary {
+  branch_name: string;
+  total_facts: number;
+  by_status: Record<string, number>;
+  by_category: Record<string, Record<string, number>>;
+  verification_rate: number;
+}
+
+// === Handoff ===
+
+export interface HandoffRecord {
+  id: string;
+  source_branch: string;
+  target_branch: string;
+  handoff_type: string;
+  fact_count: number;
+  conversation_count: number;
+  verification_status: string;
+  context_summary?: string;
+  created_at?: string;
+}
+
+export interface HandoffPacket {
+  handoff_id: string;
+  handoff_type: string;
+  source_branch: string;
+  target_branch: string;
+  source_agent_id?: string;
+  target_agent_id?: string;
+  verification_status: string;
+  context_summary?: string;
+  facts: Array<{
+    id: string;
+    fact_text: string;
+    category?: string;
+    confidence: number;
+    verification_status: string;
+  }>;
+  conversations: Array<{
+    id: string;
+    title?: string;
+    status: string;
+    message_count: number;
+    messages?: Array<{ role: string; content: string; sequence_num: number }>;
+  }>;
+  created_at?: string;
+}
+
+// === Knowledge Bundles ===
+
+export interface KnowledgeBundle {
+  id: string;
+  name: string;
+  description?: string;
+  version: number;
+  source_branch?: string;
+  source_task_id?: string;
+  fact_count: number;
+  conversation_count: number;
+  relation_count: number;
+  tags?: string[];
+  status: string;
+  created_by?: string;
+  created_at?: string;
+}
+
+export interface BundleImportResult {
+  bundle_id: string;
+  bundle_name: string;
+  target_branch: string;
+  facts_imported: number;
+  conversations_imported: number;
+  messages_imported: number;
+  relations_imported: number;
+}

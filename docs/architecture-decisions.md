@@ -183,28 +183,27 @@ Gaps 5 and 6 are addressed by the Phase 1 implementation plan (Branch Topology +
 | 5 | Branch scaling (100+ branches) | High | **Phase 1 target** — Branch Topology Management |
 | 6 | Template system missing | High | **Phase 1 target** — Template Branches |
 
-### Gap 2: Phase 5 — Knowledge Curation & Task Handoff
+### Gap 2: Phase 5 — Knowledge Curation & Task Handoff ✅ IMPLEMENTED
 
 **Design**: Complete in `docs/phase5-task-handoff-and-curation.md`
 
-Phase 5 contains four major capabilities:
+**Status**: Implemented (2026-02-24). All three engines created with full API, MCP tools, dashboard, and tests.
 
-| Capability | Existing Foundation | New Work |
-|-----------|-------------------|----------|
-| **Task Handoff** | TaskEngine, session_start hook context injection | HandoffEngine, handoff_records table, handoff protocol |
-| **Conversation Cherry-Pick** | ConversationCherryPick engine (full, range, curated) | Verification gate (LLM-as-judge on conversations) |
-| **Knowledge Bundles** | ConsolidationEngine (session → agent → task) | KnowledgeBundle model, export/import, share tokens |
-| **Verification Engine** | ScoringEngine (LLM-as-judge on dimensions) | VerificationEngine (fact/conversation verification, batch verify, merge gate) |
+| Capability | Implementation | Files |
+|-----------|---------------|-------|
+| **Verification Engine** | LLM-as-judge + heuristic fallback, batch verify, merge gate | `verification_engine.py`, `routes/verification.py` |
+| **Task Handoff** | Structured handoff with verified facts, audit trail, handoff packets | `handoff_engine.py`, `routes/handoffs.py` |
+| **Knowledge Bundles** | Portable export/import of facts, conversations, relations | `knowledge_bundle_engine.py`, `routes/bundles.py` |
 
-**Dependency chain**:
+**Dependency chain** (now complete):
 ```
-Verification Engine (extends ScoringEngine pattern)
-    → Conversation Cherry-Pick verification gate
-    → Handoff Protocol (verified facts only in handoff packet)
-    → Knowledge Bundles (only verified items in bundles)
+Verification Engine (extends ScoringEngine pattern) ✅
+    → Merge gate (verified facts only) ✅
+    → Handoff Protocol (verified facts in handoff packet) ✅
+    → Knowledge Bundles (only verified items in bundles) ✅
 ```
 
-**When to implement**: After Phase 1 (Branch Topology + Templates) is stable. Verification Engine is the foundation — build it first, then Handoff and Bundles.
+**Previously**: After Phase 1 (Branch Topology + Templates) is stable. Verification Engine is the foundation — build it first, then Handoff and Bundles.
 
 **Connection to Templates**: Knowledge Bundles and Templates serve different purposes:
 - **Template** = live working branch that new agents fork from (Day1-internal)
