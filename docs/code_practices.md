@@ -1,6 +1,6 @@
 # Code Practices
 
-Python development standards for BranchedMind. Follow these when writing or modifying code.
+Python development standards for Day1. Follow these when writing or modifying code.
 
 ## Style Guide
 
