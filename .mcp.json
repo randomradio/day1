@@ -3,7 +3,10 @@
     "day1": {
       "command": "/Users/randomradio/src/day1/.venv/bin/python",
       "args": ["-m", "day1.mcp.server"],
-      "cwd": "/Users/randomradio/src/day1"
+      "cwd": "/Users/randomradio/src/day1",
+      "env": {
+        "BM_DATABASE_URL": "mysql+aiomysql://root:111@localhost:6001/mo_catalog"
+      }
     }
   }
 }
