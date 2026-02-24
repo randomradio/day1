@@ -111,7 +111,7 @@ def generate_mcp_config() -> dict:
         "mcpServers": {
             "day1": {
                 "command": "python",
-                "args": ["-m", "day1.mcp.server"],
+                "args": ["-m", "day1.mcp.mcp_server"],
                 "env": {
                     "BM_DATABASE_URL": "sqlite+aiosqlite:///day1.db",
                     "BM_EMBEDDING_PROVIDER": "mock",

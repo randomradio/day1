@@ -77,10 +77,10 @@ uv run uvicorn day1.api.app:app --reload --port 8000
 uv run uvicorn day1.api.app:app --reload --port 8000 --log-level debug
 
 # MCP server (stdio mode) - for Claude Code integration
-uv run python -m day1.mcp.server
+uv run python -m day1.mcp.mcp_server
 
 # MCP server (SSE mode) - for testing/debug
-uv run uvicorn day1.mcp.server_http:app --reload --port 3001
+uv run uvicorn day1.mcp.mcp_server_http:app --reload --port 3001
 ```
 
 ## Dashboard (Frontend)

@@ -11,4 +11,4 @@ echo "Starting Day1 MCP server..."
 echo "Database: $BM_DATABASE_URL"
 echo ""
 
-.venv/bin/python -m day1.mcp.server
+.venv/bin/python -m day1.mcp.mcp_server
