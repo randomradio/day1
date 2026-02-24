@@ -25,14 +25,14 @@ from day1.hooks.base import (
 
 async def handler() -> dict:
     """Inject relevant historical memory at session start."""
-    session = await get_db_session()
-    if session is None:
-        return {}
+    async with get_db_session() as session:
+        if session is None:
+            return {}
 
-    embedder = get_embedding_provider()
-    fact_engine = FactEngine(session, embedder)
-    session_mgr = SessionManager(session)
-    branch_mgr = BranchManager(session)
+        embedder = get_embedding_provider()
+        fact_engine = FactEngine(session, embedder)
+        session_mgr = SessionManager(session)
+        branch_mgr = BranchManager(session)
 
     # Check for task/agent context from environment
     task_id = os.environ.get("BM_TASK_ID")
@@ -195,8 +195,6 @@ async def handler() -> dict:
         for b in non_main:
             desc = b.description or "No description"
             context_parts.append(f"- {b.branch_name}: {desc}")
-
-    await session.close()
 
     if not context_parts:
         return {}

@@ -51,30 +51,34 @@ def get_engine() -> AsyncEngine:
 
 
 async def init_db() -> None:
-    """Create database (if needed) and all tables with MatrixOne fulltext indexes."""
+    """Create database (if needed) and all tables with MatrixOne fulltext indexes.
+
+    This function is idempotent - safe to call multiple times.
+    Always uses 'day1' database regardless of what's in .env file.
+    """
     global _engine, _session_factory
+
+    # If already initialized, skip
+    if _engine is not None and _session_factory is not None:
+        return
 
     db_url = settings.database_url
 
-    # Determine if we need to create the day1 database
-    needs_db_creation = db_url.endswith('/mo_catalog') or db_url.endswith('/sys') or not any(
-        f'/{name}' in db_url for name in ('day1', 'branchedmind')
-    )
+    # Always create/use the 'day1' database
+    # Extract server URL (everything before the last '/')
+    server_url = db_url.rsplit('/', 1)[0] + '/mo_catalog'
 
-    if needs_db_creation:
-        # Create connection to server and create day1 database
-        server_url = db_url.rsplit('/', 1)[0] + '/mo_catalog'
-        engine = _create_engine(server_url)
+    # Create day1 database if it doesn't exist
+    engine = _create_engine(server_url)
+    async with engine.begin() as conn:
+        try:
+            await conn.execute(text("CREATE DATABASE IF NOT EXISTS day1"))
+            logger.info("Ensured 'day1' database exists")
+        except sa_exc.DatabaseError as e:
+            logger.debug("Database check: %s", e)
+    await engine.dispose()
 
-        async with engine.begin() as conn:
-            try:
-                await conn.execute(text("CREATE DATABASE IF NOT EXISTS day1"))
-                logger.info("Created 'day1' database")
-            except sa_exc.DatabaseError as e:
-                logger.debug("Database may already exist: %s", e)
-        await engine.dispose()
-
-    # Connect to the day1 database
+    # Always connect to 'day1' database (ignore what was in .env)
     target_url = db_url.rsplit('/', 1)[0] + '/day1'
     _engine = _create_engine(target_url)
     _session_factory = async_sessionmaker(

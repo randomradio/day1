@@ -19,65 +19,62 @@ from day1.hooks.base import (
 
 async def handler(input_data: dict) -> dict:
     """Extract facts and relations from context before compression."""
-    session = await get_db_session()
-    if session is None:
-        return {}
+    async with get_db_session() as session:
+        if session is None:
+            return {}
 
-    embedder = get_embedding_provider()
-    fact_engine = FactEngine(session, embedder)
-    search_engine = SearchEngine(session, embedder)
-    relation_engine = RelationEngine(session)
+        embedder = get_embedding_provider()
+        fact_engine = FactEngine(session, embedder)
+        search_engine = SearchEngine(session, embedder)
+        relation_engine = RelationEngine(session)
 
-    # Get transcript content if available
-    transcript = input_data.get("transcript", "")
-    if not transcript:
-        await session.close()
-        return {}
+        # Get transcript content if available
+        transcript = input_data.get("transcript", "")
+        if not transcript:
+            return {}
 
-    # For MVP: extract simple facts from transcript using heuristics
-    # Production version would use LLM (Claude) for intelligent extraction
-    facts_extracted = _extract_facts_heuristic(transcript)
-    relations_extracted = _extract_relations_heuristic(transcript)
+        # For MVP: extract simple facts from transcript using heuristics
+        # Production version would use LLM (Claude) for intelligent extraction
+        facts_extracted = _extract_facts_heuristic(transcript)
+        relations_extracted = _extract_relations_heuristic(transcript)
 
-    facts_written = 0
-    for fact_data in facts_extracted:
-        # Dedup check: search for similar existing facts
-        existing = await search_engine.search(
-            query=fact_data["text"],
-            search_type="vector",
-            limit=3,
-        )
-        if existing and existing[0]["score"] > 0.92:
-            # Highly similar fact exists, update confidence
-            await fact_engine.update_fact(
-                existing[0]["id"],
-                confidence=max(existing[0]["confidence"], 0.9),
+        facts_written = 0
+        for fact_data in facts_extracted:
+            # Dedup check: search for similar existing facts
+            existing = await search_engine.search(
+                query=fact_data["text"],
+                search_type="vector",
+                limit=3,
             )
-        else:
-            await fact_engine.write_fact(
-                fact_text=fact_data["text"],
-                category=fact_data.get("category"),
-                source_type="extraction",
+            if existing and existing[0]["score"] > 0.92:
+                # Highly similar fact exists, update confidence
+                await fact_engine.update_fact(
+                    existing[0]["id"],
+                    confidence=max(existing[0]["confidence"], 0.9),
+                )
+            else:
+                await fact_engine.write_fact(
+                    fact_text=fact_data["text"],
+                    category=fact_data.get("category"),
+                    source_type="extraction",
+                    session_id=get_session_id(),
+                )
+                facts_written += 1
+
+        rels_written = 0
+        for rel_data in relations_extracted:
+            await relation_engine.write_relation(
+                source_entity=rel_data["source"],
+                target_entity=rel_data["target"],
+                relation_type=rel_data["type"],
                 session_id=get_session_id(),
             )
-            facts_written += 1
+            rels_written += 1
 
-    rels_written = 0
-    for rel_data in relations_extracted:
-        await relation_engine.write_relation(
-            source_entity=rel_data["source"],
-            target_entity=rel_data["target"],
-            relation_type=rel_data["type"],
-            session_id=get_session_id(),
-        )
-        rels_written += 1
-
-    await session.close()
-
-    return {
-        "systemMessage": (
-            f"[Day1] Extracted {facts_written} facts and "
-            f"{rels_written} relations from context before compression."
+        return {
+            "systemMessage": (
+                f"[Day1] Extracted {facts_written} facts and "
+                f"{rels_written} relations from context before compression."
         )
     }
 

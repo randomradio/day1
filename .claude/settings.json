@@ -1,4 +1,27 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(cat:*)",
+      "WebSearch",
+      "Bash(.venv/bin/python:*)",
+      "mcp__day1__*",
+      "Bash(lsof:*)",
+      "Bash(curl:*)"
+    ]
+  },
+  "mcpServers": {
+    "day1": {
+      "command": "/Users/randomradio/src/day1/.venv/bin/python",
+      "args": [
+        "-m",
+        "day1.mcp.mcp_server"
+      ],
+      "cwd": "/Users/randomradio/src/day1",
+      "env": {
+        "PYTHONPATH": "/Users/randomradio/src/day1/src"
+      }
+    }
+  },
   "hooks": {
     "SessionStart": [
       {
@@ -6,7 +29,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/randomradio/src/day1/.venv/bin/python -m day1.hooks.session_start"
+            "command": "/Users/randomradio/src/day1/.venv/bin/python -m day1.hooks.session_start",
+            "env": {
+              "PYTHONPATH": "/Users/randomradio/src/day1/src",
+              "CLAUDE_PROJECT_PATH": "/Users/randomradio/src/day1"
+            }
           }
         ]
       }
@@ -17,7 +44,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/randomradio/src/day1/.venv/bin/python -m day1.hooks.user_prompt"
+            "command": "/Users/randomradio/src/day1/.venv/bin/python -m day1.hooks.user_prompt",
+            "env": {
+              "PYTHONPATH": "/Users/randomradio/src/day1/src",
+              "CLAUDE_PROJECT_PATH": "/Users/randomradio/src/day1"
+            }
           }
         ]
       }
@@ -28,7 +59,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/randomradio/src/day1/.venv/bin/python -m day1.hooks.pre_tool_use"
+            "command": "/Users/randomradio/src/day1/.venv/bin/python -m day1.hooks.pre_tool_use",
+            "env": {
+              "PYTHONPATH": "/Users/randomradio/src/day1/src",
+              "CLAUDE_PROJECT_PATH": "/Users/randomradio/src/day1"
+            }
           }
         ]
       }
@@ -39,7 +74,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/randomradio/src/day1/.venv/bin/python -m day1.hooks.post_tool_use"
+            "command": "/Users/randomradio/src/day1/.venv/bin/python -m day1.hooks.post_tool_use",
+            "env": {
+              "PYTHONPATH": "/Users/randomradio/src/day1/src",
+              "CLAUDE_PROJECT_PATH": "/Users/randomradio/src/day1"
+            }
           }
         ]
       }
@@ -50,7 +89,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/randomradio/src/day1/.venv/bin/python -m day1.hooks.assistant_response"
+            "command": "/Users/randomradio/src/day1/.venv/bin/python -m day1.hooks.assistant_response",
+            "env": {
+              "PYTHONPATH": "/Users/randomradio/src/day1/src",
+              "CLAUDE_PROJECT_PATH": "/Users/randomradio/src/day1"
+            }
           }
         ]
       }
@@ -61,7 +104,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/randomradio/src/day1/.venv/bin/python -m day1.hooks.pre_compact"
+            "command": "/Users/randomradio/src/day1/.venv/bin/python -m day1.hooks.pre_compact",
+            "env": {
+              "PYTHONPATH": "/Users/randomradio/src/day1/src",
+              "CLAUDE_PROJECT_PATH": "/Users/randomradio/src/day1"
+            }
           }
         ]
       }
@@ -72,7 +119,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/randomradio/src/day1/.venv/bin/python -m day1.hooks.session_end"
+            "command": "/Users/randomradio/src/day1/.venv/bin/python -m day1.hooks.session_end",
+            "env": {
+              "PYTHONPATH": "/Users/randomradio/src/day1/src",
+              "CLAUDE_PROJECT_PATH": "/Users/randomradio/src/day1"
+            }
           }
         ]
       }

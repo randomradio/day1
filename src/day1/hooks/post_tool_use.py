@@ -22,58 +22,67 @@ from day1.hooks.base import (
 
 async def handler(input_data: dict) -> dict:
     """Capture and store tool call observation."""
-    session = await get_db_session()
-    if session is None:
-        return {"async": True}
+    async with get_db_session() as session:
+        if session is None:
+            return {"async": True}
 
-    embedder = get_embedding_provider()
-    obs_engine = ObservationEngine(session, embedder)
+        tool_name = input_data.get("tool_name", "unknown")
+        tool_input = input_data.get("tool_input", "")
+        tool_response = input_data.get("tool_response", "")
 
-    tool_name = input_data.get("tool_name", "unknown")
-    tool_input = input_data.get("tool_input", "")
-    tool_response = input_data.get("tool_response", "")
+        # Read task/agent context from environment
+        task_id = os.environ.get("BM_TASK_ID")
+        agent_id = os.environ.get("BM_AGENT_ID")
 
-    # Read task/agent context from environment
-    task_id = os.environ.get("BM_TASK_ID")
-    agent_id = os.environ.get("BM_AGENT_ID")
+        # Compress observation: extract key information
+        summary = _compress_observation(tool_name, tool_input, tool_response)
 
-    # Compress observation: extract key information
-    summary = _compress_observation(tool_name, tool_input, tool_response)
+        sid = get_session_id()
 
-    sid = get_session_id()
+        # Store observation (skip embedding on failure)
+        try:
+            embedder = get_embedding_provider()
+            obs_engine = ObservationEngine(session, embedder)
+            await obs_engine.write_observation(
+                session_id=sid,
+                observation_type="tool_use",
+                tool_name=tool_name,
+                summary=summary,
+                raw_input=str(tool_input)[:2000],
+                raw_output=str(tool_response)[:2000],
+                task_id=task_id,
+                agent_id=agent_id,
+            )
+        except Exception as e:
+            # Embedding failures are non-fatal
+            from day1.hooks.base import _debug_log
+            _debug_log(f"[post_tool_use] Observation write skipped: {e}")
 
-    await obs_engine.write_observation(
-        session_id=sid,
-        observation_type="tool_use",
-        tool_name=tool_name,
-        summary=summary,
-        raw_input=str(tool_input)[:2000],
-        raw_output=str(tool_response)[:2000],
-        task_id=task_id,
-        agent_id=agent_id,
-    )
+        # Also store as a tool_result message in conversation history (Layer 1)
+        conv_engine = ConversationEngine(session)
+        conv = await conv_engine.get_conversation_by_session(sid)
+        if conv is not None:
+            embedder = get_embedding_provider()
+            msg_engine = MessageEngine(session, embedder)
+            try:
+                await msg_engine.write_message(
+                    conversation_id=conv.id,
+                    role="tool_result",
+                    content=summary,
+                    tool_calls=[{
+                        "name": tool_name,
+                        "input": str(tool_input)[:2000],
+                        "output": str(tool_response)[:2000],
+                    }],
+                    session_id=sid,
+                    agent_id=agent_id,
+                    branch_name=conv.branch_name,
+                    embed=False,  # Tool results don't need embeddings
+                )
+            except Exception as e:
+                from day1.hooks.base import _debug_log
+                _debug_log(f"[post_tool_use] Message write skipped: {e}")
 
-    # Also store as a tool_result message in conversation history (Layer 1)
-    conv_engine = ConversationEngine(session)
-    conv = await conv_engine.get_conversation_by_session(sid)
-    if conv is not None:
-        msg_engine = MessageEngine(session, embedder)
-        await msg_engine.write_message(
-            conversation_id=conv.id,
-            role="tool_result",
-            content=summary,
-            tool_calls=[{
-                "name": tool_name,
-                "input": str(tool_input)[:2000],
-                "output": str(tool_response)[:2000],
-            }],
-            session_id=sid,
-            agent_id=agent_id,
-            branch_name=conv.branch_name,
-            embed=False,  # Tool results don't need embeddings
-        )
-
-    await session.close()
     return {"async": True, "asyncTimeout": 10000}
 
 

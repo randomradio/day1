@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     # Branch defaults
     default_branch: str = "main"
 
+    # Hooks debug logging
+    hooks_debug: bool = False
+
     model_config = {"env_prefix": "BM_", "env_file": ".env"}
 
 

@@ -17,29 +17,27 @@ from day1.hooks.base import (
 
 async def handler(input_data: dict) -> dict:
     """Generate interim summary of the current response."""
-    session = await get_db_session()
-    if session is None:
-        return {}
+    async with get_db_session() as session:
+        if session is None:
+            return {}
 
-    embedder = get_embedding_provider()
-    obs_engine = ObservationEngine(session, embedder)
+        embedder = get_embedding_provider()
+        obs_engine = ObservationEngine(session, embedder)
 
-    # Extract summary from the response
-    response = input_data.get("response", "")
-    if not response:
-        await session.close()
-        return {}
+        # Extract summary from the response
+        response = input_data.get("response", "")
+        if not response:
+            return {}
 
-    # For MVP: create a simple summary observation
-    summary = _summarize_response(response)
-    if summary:
-        await obs_engine.write_observation(
-            session_id=get_session_id(),
-            observation_type="insight",
-            summary=summary,
-        )
+        # For MVP: create a simple summary observation
+        summary = _summarize_response(response)
+        if summary:
+            await obs_engine.write_observation(
+                session_id=get_session_id(),
+                observation_type="insight",
+                summary=summary,
+            )
 
-    await session.close()
     return {}
 
 
