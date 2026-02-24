@@ -17,7 +17,7 @@ from day1.db.models import BranchRegistry
 logger = logging.getLogger(__name__)
 
 # Tables that participate in branching via DATA BRANCH CREATE TABLE
-BRANCH_TABLES = ["facts", "relations", "observations"]
+BRANCH_TABLES = ["facts", "relations", "observations", "conversations", "messages"]
 
 
 def _branch_table(table: str, branch_name: str) -> str:
@@ -70,16 +70,20 @@ class BranchManager:
         branch_name: str,
         parent_branch: str = "main",
         description: str | None = None,
+        tables: list[str] | None = None,
     ) -> BranchRegistry:
         """Create a new memory branch using MO DATA BRANCH CREATE TABLE.
 
-        Each branch creates suffixed copies of facts/relations/observations
-        tables via zero-copy DATA BRANCH.
+        Each branch creates suffixed copies of memory tables via zero-copy
+        DATA BRANCH.
 
         Args:
             branch_name: New branch name.
             parent_branch: Branch to fork from.
             description: Optional description.
+            tables: Override which tables to branch. None = all BRANCH_TABLES.
+                     Use [] to create a branch with no table copies (for
+                     curated branches that will be populated via cherry-pick).
 
         Returns:
             Created BranchRegistry entry.
@@ -107,8 +111,9 @@ class BranchManager:
 
         # MO native: zero-copy branch per table (requires autocommit)
         # Use session's connection to avoid event loop conflicts
+        branch_tables = tables if tables is not None else BRANCH_TABLES
         async with self._get_autocommit_conn() as ac:
-            for table in BRANCH_TABLES:
+            for table in branch_tables:
                 parent_tbl = _branch_table(table, parent_branch)
                 branch_tbl = _branch_table(table, branch_name)
                 await ac.execute(
