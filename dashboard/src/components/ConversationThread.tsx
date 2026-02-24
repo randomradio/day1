@@ -1,4 +1,5 @@
 import { useConversationStore } from '../stores/conversationStore';
+import { useVisiblePolling } from '../hooks/usePolling';
 
 const ROLE_STYLES: Record<string, { bg: string; label: string; text: string }> = {
   user: { bg: 'bg-blue-50', label: 'User', text: 'text-blue-700' },
@@ -13,8 +14,11 @@ function getRoleStyle(role: string) {
 }
 
 export default function ConversationThread() {
-  const { selectedConversation, messages, selectedMessage, scores, evaluateConversation, loading, setSelectedMessage } =
+  const { selectedConversation, messages, selectedMessage, scores, evaluateConversation, loading, setSelectedMessage, refreshMessages, pollingEnabled } =
     useConversationStore();
+
+  // Poll messages for selected conversation every 5 seconds
+  useVisiblePolling(refreshMessages, 5000, pollingEnabled && selectedConversation !== null);
 
   if (!selectedConversation) {
     return (

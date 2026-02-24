@@ -1,11 +1,12 @@
 import { useEffect } from 'react';
 import { useConversationStore } from '../stores/conversationStore';
+import { useVisiblePolling } from '../hooks/usePolling';
 
 const STATUS_COLORS: Record<string, string> = {
   active: '#22c55e',
   completed: '#3b82f6',
   replaying: '#f59e0b',
-  archived: '#6b7280',
+  archived: '#9ca3af',
 };
 
 export default function ConversationList() {
@@ -14,18 +15,28 @@ export default function ConversationList() {
     selectedConversation,
     loading,
     fetchConversations,
+    refreshConversations,
     selectConversation,
     fetchReplays,
+    refreshReplays,
+    pollingEnabled,
   } = useConversationStore();
 
+  // Initial fetch
   useEffect(() => {
     fetchConversations({ limit: 50 });
   }, [fetchConversations]);
 
+  // Poll conversations every 5 seconds
+  useVisiblePolling(refreshConversations, 5000, pollingEnabled);
+
+  // Poll replays for selected conversation every 5 seconds
+  useVisiblePolling(refreshReplays, 5000, pollingEnabled && selectedConversation !== null);
+
   return (
-    <div className="bg-gray-800 rounded-lg p-3 h-full overflow-hidden flex flex-col">
+    <div className="bg-white rounded-lg p-3 h-full overflow-hidden flex flex-col border border-gray-200 shadow-sm">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-sm text-gray-400 font-medium">Conversations</span>
+        <span className="text-sm text-gray-700 font-medium">Conversations</span>
         <span className="text-xs text-gray-500">{conversations.length} total</span>
       </div>
 
@@ -45,17 +56,17 @@ export default function ConversationList() {
               }}
               className={`w-full text-left p-2 rounded text-xs transition-colors ${
                 isSelected
-                  ? 'bg-blue-900/50 border border-blue-700'
-                  : 'bg-gray-750 hover:bg-gray-700 border border-transparent'
+                  ? 'bg-blue-100 border border-blue-300'
+                  : 'bg-gray-50 hover:bg-gray-100 border border-transparent'
               }`}
             >
               <div className="flex items-center justify-between">
-                <span className="text-gray-200 truncate font-medium">
+                <span className="text-gray-800 truncate font-medium">
                   {conv.title || conv.id.slice(0, 12)}
                 </span>
                 <span
                   className="inline-block w-2 h-2 rounded-full ml-2 flex-shrink-0"
-                  style={{ backgroundColor: STATUS_COLORS[conv.status] || '#6b7280' }}
+                  style={{ backgroundColor: STATUS_COLORS[conv.status] || '#9ca3af' }}
                   title={conv.status}
                 />
               </div>
@@ -63,7 +74,7 @@ export default function ConversationList() {
                 <span>{conv.message_count} msgs</span>
                 <span>{conv.total_tokens.toLocaleString()} tok</span>
                 {conv.parent_conversation_id && (
-                  <span className="text-amber-500">fork</span>
+                  <span className="text-amber-600">fork</span>
                 )}
               </div>
             </button>

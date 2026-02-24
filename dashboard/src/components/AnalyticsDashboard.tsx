@@ -2,12 +2,13 @@ import { useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import { useConversationStore } from '../stores/conversationStore';
 import { useBranchStore } from '../stores/branchStore';
+import { useVisiblePolling } from '../hooks/usePolling';
 
 function StatCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
   return (
-    <div className="bg-gray-700/50 rounded-lg p-3">
+    <div className="bg-white rounded-lg p-3 border border-gray-200 shadow-sm">
       <div className="text-xs text-gray-500">{label}</div>
-      <div className="text-lg font-bold text-gray-100">{value}</div>
+      <div className="text-lg font-bold text-gray-800">{value}</div>
       {sub && <div className="text-xs text-gray-500 mt-0.5">{sub}</div>}
     </div>
   );
@@ -65,7 +66,7 @@ function TrendChart({ data, color, label }: { data: Array<{ period: string; coun
   }, [data, color]);
 
   return (
-    <div className="bg-gray-700/30 rounded p-2">
+    <div className="bg-gray-50 rounded p-2 border border-gray-100">
       <span className="text-xs text-gray-500">{label}</span>
       <svg ref={svgRef} className="w-full" height={80} />
     </div>
@@ -73,18 +74,29 @@ function TrendChart({ data, color, label }: { data: Array<{ period: string; coun
 }
 
 export default function AnalyticsDashboard() {
-  const { analytics, trends, fetchAnalytics, fetchTrends, loading } =
+  const { analytics, trends, fetchAnalytics, fetchTrends, loading, pollingEnabled } =
     useConversationStore();
   const { activeBranch } = useBranchStore();
 
+  // Initial fetch
   useEffect(() => {
     fetchAnalytics(activeBranch === 'main' ? undefined : activeBranch);
     fetchTrends(30, 'day', activeBranch === 'main' ? undefined : activeBranch);
   }, [activeBranch, fetchAnalytics, fetchTrends]);
 
+  // Polling for analytics (every 10 seconds to avoid excessive load)
+  useVisiblePolling(
+    () => {
+      fetchAnalytics(activeBranch === 'main' ? undefined : activeBranch);
+      fetchTrends(30, 'day', activeBranch === 'main' ? undefined : activeBranch);
+    },
+    10000,
+    pollingEnabled
+  );
+
   if (loading && !analytics) {
     return (
-      <div className="bg-gray-800 rounded-lg p-4">
+      <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
         <p className="text-xs text-gray-500">Loading analytics...</p>
       </div>
     );
@@ -92,7 +104,7 @@ export default function AnalyticsDashboard() {
 
   if (!analytics) {
     return (
-      <div className="bg-gray-800 rounded-lg p-4">
+      <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
         <p className="text-xs text-gray-500">No analytics data available.</p>
       </div>
     );
@@ -103,10 +115,10 @@ export default function AnalyticsDashboard() {
   const con = analytics.consolidation;
 
   return (
-    <div className="bg-gray-800 rounded-lg p-3 space-y-3">
+    <div className="bg-white rounded-lg p-3 space-y-3 border border-gray-200 shadow-sm">
       <div className="flex items-center justify-between">
-        <span className="text-sm text-gray-400 font-medium">Analytics</span>
-        <span className="text-xs text-gray-600">{analytics.period_days}d window</span>
+        <span className="text-sm text-gray-700 font-medium">Analytics</span>
+        <span className="text-xs text-gray-500">{analytics.period_days}d window</span>
       </div>
 
       {/* Stat cards */}
@@ -149,8 +161,8 @@ export default function AnalyticsDashboard() {
           <span className="text-xs text-gray-500">Recent Activity</span>
           <div className="mt-1 space-y-1">
             {analytics.activity.recent_conversations.map((rc) => (
-              <div key={rc.id} className="flex items-center justify-between text-xs bg-gray-700/30 rounded px-2 py-1">
-                <span className="text-gray-300 truncate">{rc.title || rc.id.slice(0, 12)}</span>
+              <div key={rc.id} className="flex items-center justify-between text-xs bg-gray-50 rounded px-2 py-1 border border-gray-100">
+                <span className="text-gray-800 truncate">{rc.title || rc.id.slice(0, 12)}</span>
                 <div className="flex gap-2 text-gray-500">
                   <span>{rc.status}</span>
                   <span>{rc.message_count} msgs</span>

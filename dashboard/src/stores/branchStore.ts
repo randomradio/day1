@@ -13,12 +13,16 @@ interface BranchStore {
   searchQuery: string;
   timeTravelTs: string;
   timeTravelResults: Fact[];
+  pollingEnabled: boolean;
 
   // Actions
   setActiveBranch: (branch: string) => void;
   setSearchQuery: (query: string) => void;
+  setPollingEnabled: (enabled: boolean) => void;
   fetchBranches: () => Promise<void>;
+  refreshBranches: () => Promise<void>; // Silent fetch for polling
   searchFacts: (query: string) => Promise<void>;
+  refreshFacts: () => Promise<void>; // Silent fetch for polling
   fetchDiff: (source: string, target?: string) => Promise<void>;
   mergeBranch: (source: string, target: string, strategy: string, conflict?: string) => Promise<void>;
   timeTravel: (timestamp: string) => Promise<void>;
@@ -35,10 +39,13 @@ export const useBranchStore = create<BranchStore>((set, get) => ({
   searchQuery: '',
   timeTravelTs: '',
   timeTravelResults: [],
+  pollingEnabled: true,
 
   setActiveBranch: (branch) => set({ activeBranch: branch }),
 
   setSearchQuery: (query) => set({ searchQuery: query }),
+
+  setPollingEnabled: (enabled) => set({ pollingEnabled: enabled }),
 
   clearError: () => set({ error: null }),
 
@@ -52,6 +59,16 @@ export const useBranchStore = create<BranchStore>((set, get) => ({
     }
   },
 
+  refreshBranches: async () => {
+    if (!get().pollingEnabled) return;
+    try {
+      const data = await api.listBranches();
+      set({ branches: data.branches });
+    } catch (e) {
+      console.debug('Failed to refresh branches:', e);
+    }
+  },
+
   searchFacts: async (query) => {
     set({ loading: true, error: null });
     try {
@@ -59,6 +76,17 @@ export const useBranchStore = create<BranchStore>((set, get) => ({
       set({ facts: data.results, loading: false });
     } catch (e) {
       set({ error: (e as Error).message, loading: false });
+    }
+  },
+
+  refreshFacts: async () => {
+    const query = get().searchQuery;
+    if (!query || !get().pollingEnabled) return;
+    try {
+      const data = await api.searchFacts(query, get().activeBranch);
+      set({ facts: data.results });
+    } catch (e) {
+      console.debug('Failed to refresh facts:', e);
     }
   },
 

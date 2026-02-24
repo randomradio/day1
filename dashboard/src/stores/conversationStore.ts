@@ -50,19 +50,26 @@ interface ConversationStore {
   trends: TrendData | null;
   loading: boolean;
   error: string | null;
+  pollingEnabled: boolean;
 
   // Actions
   setTab: (tab: Tab, updateUrl?: boolean) => void;
   setSelectedMessage: (message: Message | null) => void;
+  setPollingEnabled: (enabled: boolean) => void;
   fetchConversations: (params?: { session_id?: string; status?: string; limit?: number }) => Promise<void>;
+  refreshConversations: () => Promise<void>; // Silent fetch for polling
   selectConversation: (id: string) => Promise<void>;
   fetchMessages: (conversationId: string) => Promise<void>;
+  refreshMessages: () => Promise<void>; // Silent fetch for polling
   fetchReplays: (conversationId?: string) => Promise<void>;
+  refreshReplays: () => Promise<void>; // Silent fetch for polling
   fetchSemanticDiff: (a: string, b: string) => Promise<void>;
   evaluateConversation: (conversationId: string) => Promise<void>;
   fetchScoreSummary: (conversationId: string) => Promise<void>;
   fetchAnalytics: (branch?: string, days?: number) => Promise<void>;
+  refreshAnalytics: (branch?: string, days?: number) => Promise<void>; // Silent fetch for polling
   fetchTrends: (days?: number, granularity?: string, branch?: string) => Promise<void>;
+  refreshTrends: (days?: number, granularity?: string, branch?: string) => Promise<void>; // Silent fetch for polling
   clearError: () => void;
 }
 
@@ -80,6 +87,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   trends: null,
   loading: false,
   error: null,
+  pollingEnabled: true,
 
   setTab: (tab, updateUrl = true) => {
     set({ tab });
@@ -90,6 +98,8 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
 
   setSelectedMessage: (message) => set({ selectedMessage: message }),
 
+  setPollingEnabled: (enabled) => set({ pollingEnabled: enabled }),
+
   clearError: () => set({ error: null }),
 
   fetchConversations: async (params) => {
@@ -99,6 +109,17 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       set({ conversations: data.conversations, loading: false });
     } catch (e) {
       set({ error: (e as Error).message, loading: false });
+    }
+  },
+
+  refreshConversations: async () => {
+    if (!get().pollingEnabled) return;
+    try {
+      const data = await api.listConversations({ limit: 50 });
+      set({ conversations: data.conversations });
+    } catch (e) {
+      // Silent fail for polling
+      console.debug('Failed to refresh conversations:', e);
     }
   },
 
@@ -123,6 +144,17 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     }
   },
 
+  refreshMessages: async () => {
+    const selected = get().selectedConversation;
+    if (!selected || !get().pollingEnabled) return;
+    try {
+      const data = await api.listMessages(selected.id);
+      set({ messages: data.messages });
+    } catch (e) {
+      console.debug('Failed to refresh messages:', e);
+    }
+  },
+
   fetchReplays: async (conversationId) => {
     set({ loading: true, error: null });
     try {
@@ -130,6 +162,17 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       set({ replays: data.replays, loading: false });
     } catch (e) {
       set({ error: (e as Error).message, loading: false });
+    }
+  },
+
+  refreshReplays: async () => {
+    const selected = get().selectedConversation;
+    if (!selected || !get().pollingEnabled) return;
+    try {
+      const data = await api.listReplays(selected.id);
+      set({ replays: data.replays });
+    } catch (e) {
+      console.debug('Failed to refresh replays:', e);
     }
   },
 
@@ -172,6 +215,16 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     }
   },
 
+  refreshAnalytics: async (branch, days = 30) => {
+    if (!get().pollingEnabled) return;
+    try {
+      const data = await api.analyticsOverview(branch, days);
+      set({ analytics: data });
+    } catch (e) {
+      console.debug('Failed to refresh analytics:', e);
+    }
+  },
+
   fetchTrends: async (days = 30, granularity = 'day', branch) => {
     set({ loading: true, error: null });
     try {
@@ -179,6 +232,16 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       set({ trends: data, loading: false });
     } catch (e) {
       set({ error: (e as Error).message, loading: false });
+    }
+  },
+
+  refreshTrends: async (days = 30, granularity = 'day', branch) => {
+    if (!get().pollingEnabled) return;
+    try {
+      const data = await api.analyticsTrends(days, granularity, branch);
+      set({ trends: data });
+    } catch (e) {
+      console.debug('Failed to refresh trends:', e);
     }
   },
 }));
