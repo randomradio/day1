@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +14,8 @@ from day1.core.embedding import (
 )
 from day1.core.exceptions import MessageNotFoundError
 from day1.db.models import Conversation, Message
+
+logger = logging.getLogger(__name__)
 
 
 class MessageEngine:
@@ -71,12 +75,15 @@ class MessageEngine:
         last_seq = seq_result.scalar_one_or_none()
         next_seq = (last_seq or 0) + 1
 
-        # Generate embedding from content
+        # Generate embedding from content (non-fatal: capture always succeeds)
         embedding_str = None
         if embed and content:
-            embed_text = content[:2000]  # Truncate for embedding
-            vec = await self._embedder.embed(embed_text)
-            embedding_str = embedding_to_vecf32(vec)
+            try:
+                embed_text = content[:2000]  # Truncate for embedding
+                vec = await self._embedder.embed(embed_text)
+                embedding_str = embedding_to_vecf32(vec)
+            except Exception as e:
+                logger.warning("Embedding failed for message, saving without: %s", e)
 
         msg = Message(
             conversation_id=conversation_id,

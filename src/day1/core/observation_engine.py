@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +13,8 @@ from day1.core.embedding import (
     get_embedding_provider,
 )
 from day1.db.models import Observation
+
+logger = logging.getLogger(__name__)
 
 
 class ObservationEngine:
@@ -54,14 +58,20 @@ class ObservationEngine:
         Returns:
             Created Observation object.
         """
-        vec = await self._embedder.embed(summary)
+        # Embedding is non-fatal: capture always succeeds
+        embedding_str = None
+        try:
+            vec = await self._embedder.embed(summary)
+            embedding_str = embedding_to_vecf32(vec)
+        except Exception as e:
+            logger.warning("Embedding failed for observation, saving without: %s", e)
 
         obs = Observation(
             session_id=session_id,
             observation_type=observation_type,
             tool_name=tool_name,
             summary=summary,
-            embedding=embedding_to_vecf32(vec),
+            embedding=embedding_str,
             raw_input=raw_input,
             raw_output=raw_output,
             branch_name=branch_name,
