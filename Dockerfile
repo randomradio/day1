@@ -17,10 +17,9 @@ FROM python:3.11-slim AS api
 
 # Install system deps and uv
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc libffi-dev curl && \
+    apt-get install -y --no-install-recommends gcc libffi-dev && \
     rm -rf /var/lib/apt/lists/* && \
-    curl -LsSf https://astral.sh/uv/install.sh | sh && \
-    mv /root/.local/bin/uv /usr/local/bin/uv
+    python -m pip install --no-cache-dir uv
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \

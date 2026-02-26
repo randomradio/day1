@@ -10,20 +10,64 @@ One command to run everything:
 
 ```bash
 cp .env.example .env          # edit API keys as needed
-docker compose up --build
+docker compose up -d --build
 ```
 
 | Service | URL |
 |---------|-----|
-| Dashboard | http://localhost:3000 |
-| REST API | http://localhost:8000 |
-| API Docs | http://localhost:8000/docs |
-| Health | http://localhost:8000/health |
+| Dashboard (Nginx) | http://localhost:9904 |
+| REST API | http://localhost:9903 |
+| API Docs | http://localhost:9903/docs |
+| Health | http://localhost:9903/health |
 
-Run the smoke test to verify:
+Verify Docker services:
 
 ```bash
-./scripts/smoke_test.sh
+docker compose ps
+curl -s http://127.0.0.1:9903/health
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:9904/
+```
+
+Run the API smoke test against the Docker API port:
+
+```bash
+./scripts/smoke_test.sh http://127.0.0.1:9903
+```
+
+### MCP in Docker (stdio, no TCP port)
+
+Day1 MCP currently uses `stdio` transport. It is not an HTTP service and does not expose a port.
+
+Run it inside the Docker `api` container on demand:
+
+```bash
+docker compose exec -T api python -m day1.mcp.mcp_server
+```
+
+This command is what your MCP client (for example Claude Code) should execute.
+
+### Remote Client Access (Host → Client)
+
+If your client machine can reach the host machine:
+
+- Dashboard: `http://<HOST_IP>:9904`
+- API: `http://<HOST_IP>:9903`
+- API Docs: `http://<HOST_IP>:9903/docs`
+
+For MCP, use SSH to launch the stdio server on the host (inside Docker):
+
+```json
+{
+  "mcpServers": {
+    "day1": {
+      "command": "ssh",
+      "args": [
+        "user@HOST",
+        "cd /home/momo/src/day1 && docker compose exec -T api python -m day1.mcp.mcp_server"
+      ]
+    }
+  }
+}
 ```
 
 ## Quick Start (Local Dev)
@@ -76,6 +120,12 @@ uv run python -m day1.mcp.mcp_server
 ```
 
 See tool reference in `docs/mcp_tools.md`.
+
+Docker variant (runs the same MCP server inside the `api` container):
+
+```bash
+docker compose exec -T api python -m day1.mcp.mcp_server
+```
 
 ## Testing: Real Acceptance vs Negative Surface
 

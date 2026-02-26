@@ -44,6 +44,23 @@ docker compose ps
 | API | http://localhost:9903/api/v1 | REST API |
 | API Docs | http://localhost:9903/docs | Swagger 文档 |
 
+### 验证（推荐）
+
+```bash
+curl -s http://127.0.0.1:9903/health
+./scripts/smoke_test.sh http://127.0.0.1:9903
+```
+
+### 远程客户端访问（Host → Client）
+
+假设客户端可以访问 Host 机器网络：
+
+- Dashboard: `http://<HOST_IP>:9904`
+- API: `http://<HOST_IP>:9903`
+- API Docs: `http://<HOST_IP>:9903/docs`
+
+说明：MCP 当前使用 `stdio` 传输，不是 HTTP 服务，因此不会暴露单独端口。
+
 ### 停止
 
 ```bash
@@ -155,6 +172,33 @@ bash scripts/start.sh dashboard
 ## MCP 使用
 
 ### Docker Compose 环境
+
+在 Docker 的 `api` 容器中直接启动 MCP（stdio）：
+
+```bash
+docker compose exec -T api python -m day1.mcp.mcp_server
+```
+
+远程客户端（Claude Code / dotfiles）推荐通过 SSH 在 Host 上执行：
+
+```json
+{
+  "mcpServers": {
+    "day1": {
+      "command": "ssh",
+      "args": [
+        "user@HOST",
+        "cd /home/momo/src/day1 && docker compose exec -T api python -m day1.mcp.mcp_server"
+      ]
+    }
+  }
+}
+```
+
+说明：
+
+- `-T` 很重要（关闭 TTY，更适合 MCP stdio）
+- 需要先确保 `docker compose up -d` 已启动 `api` 容器
 
 在 Claude Code 中配置（`.claude/settings.json`）：
 

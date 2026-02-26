@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
@@ -21,7 +22,11 @@ class CommandOutput:
 
 
 def get_active_branch() -> str:
-    return ACTIVE_BRANCH
+    return (
+        os.environ.get("BM_BRANCH")
+        or os.environ.get("BM_DEFAULT_BRANCH")
+        or ACTIVE_BRANCH
+    )
 
 
 def set_active_branch(branch_name: str) -> None:
@@ -59,9 +64,21 @@ def parse_json_arg(value: str | None) -> dict[str, Any] | None:
     return parsed
 
 
+def parse_json_list_arg(value: str | None) -> list[Any] | None:
+    if value is None:
+        return None
+    parsed = json.loads(value)
+    if not isinstance(parsed, list):
+        raise ValueError("value must be a JSON array")
+    return parsed
+
+
 def emit(payload: Any, fmt: str = "table") -> None:
     if fmt == "json":
         print(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
+        return
+    if fmt == "text":
+        _emit_text(payload)
         return
 
     if isinstance(payload, dict):
@@ -125,3 +142,30 @@ def _print_rows(rows: list[dict[str, Any]]) -> None:
     print(sep)
     for row in string_rows:
         print(" | ".join(row[key].ljust(widths[key]) for key in keys))
+
+
+def _emit_text(payload: Any) -> None:
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            if isinstance(value, list):
+                print(f"{key}:")
+                for item in value:
+                    if isinstance(item, dict):
+                        print("- " + ", ".join(f"{k}={item.get(k)}" for k in item))
+                    else:
+                        print(f"- {item}")
+            elif isinstance(value, dict):
+                print(f"{key}:")
+                for sub_key, sub_value in value.items():
+                    print(f"  {sub_key}: {sub_value}")
+            else:
+                print(f"{key}: {value}")
+        return
+    if isinstance(payload, list):
+        for item in payload:
+            if isinstance(item, dict):
+                print(", ".join(f"{k}={item.get(k)}" for k in item))
+            else:
+                print(item)
+        return
+    print(payload)

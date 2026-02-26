@@ -7,6 +7,7 @@ from typing import Any
 
 from day1.cli.commands.common import emit, run_async, set_active_branch, with_session
 from day1.core.branch_manager import BranchManager
+from day1.core.merge_engine import MergeEngine
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -17,12 +18,14 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     create.add_argument("branch_name")
     create.add_argument("--parent", default="main")
     create.add_argument("--description")
-    create.add_argument("--format", choices=["table", "json"], default="table")
+    create.add_argument("--format", choices=["table", "json", "text"], default="table")
     create.set_defaults(_handler=cmd_branch_create, command="branch")
 
     list_cmd = branch_sub.add_parser("list", help="List branches")
     list_cmd.add_argument("--status")
-    list_cmd.add_argument("--format", choices=["table", "json"], default="table")
+    list_cmd.add_argument(
+        "--format", choices=["table", "json", "text"], default="table"
+    )
     list_cmd.set_defaults(_handler=cmd_branch_list, command="branch")
 
     switch = branch_sub.add_parser(
@@ -35,8 +38,34 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         action="store_true",
         help="Print shell export command for manual persistence",
     )
-    switch.add_argument("--format", choices=["table", "json"], default="table")
+    switch.add_argument("--format", choices=["table", "json", "text"], default="table")
     switch.set_defaults(_handler=cmd_branch_switch, command="branch")
+
+    diff_cmd = branch_sub.add_parser("diff", help="Diff two branches")
+    diff_cmd.add_argument("source_branch")
+    diff_cmd.add_argument("target_branch")
+    diff_cmd.add_argument("--category")
+    diff_cmd.add_argument(
+        "--format", choices=["table", "json", "text"], default="table"
+    )
+    diff_cmd.set_defaults(_handler=cmd_branch_diff, command="branch")
+
+    merge_cmd = branch_sub.add_parser("merge", help="Merge branches")
+    merge_cmd.add_argument("source_branch")
+    merge_cmd.add_argument(
+        "--into", "--target-branch", dest="target_branch", default="main"
+    )
+    merge_cmd.add_argument(
+        "--strategy",
+        choices=["auto", "cherry_pick", "squash", "native"],
+        default="auto",
+    )
+    merge_cmd.add_argument("--item", dest="items", action="append", default=[])
+    merge_cmd.add_argument("--conflict", choices=["skip", "accept"], default="skip")
+    merge_cmd.add_argument(
+        "--format", choices=["table", "json", "text"], default="table"
+    )
+    merge_cmd.set_defaults(_handler=cmd_branch_merge, command="branch")
 
 
 def cmd_branch_create(args: argparse.Namespace) -> int:
@@ -99,7 +128,7 @@ async def _cmd_branch_switch(args: argparse.Namespace) -> int:
         payload = {
             "active_branch": args.branch_name,
             "persist_hint": (
-                f"export BM_DEFAULT_BRANCH={args.branch_name}"
+                f"export BM_BRANCH={args.branch_name}"
                 if args.print_export
                 else "Use --print-export to print a shell export command."
             ),
@@ -109,5 +138,44 @@ async def _cmd_branch_switch(args: argparse.Namespace) -> int:
     result = await with_session(_run)
     emit(result, args.format)
     if args.print_export:
-        print(f"export BM_DEFAULT_BRANCH={args.branch_name}")
+        print(f"export BM_BRANCH={args.branch_name}")
+    return 0
+
+
+def cmd_branch_diff(args: argparse.Namespace) -> int:
+    return run_async(_cmd_branch_diff(args))
+
+
+async def _cmd_branch_diff(args: argparse.Namespace) -> int:
+    async def _run(session: Any) -> dict[str, Any]:
+        diff = await MergeEngine(session).diff(
+            source_branch=args.source_branch,
+            target_branch=args.target_branch,
+            category=args.category,
+        )
+        return {
+            "source_branch": args.source_branch,
+            "target_branch": args.target_branch,
+            **diff.to_dict(),
+        }
+
+    emit(await with_session(_run), args.format)
+    return 0
+
+
+def cmd_branch_merge(args: argparse.Namespace) -> int:
+    return run_async(_cmd_branch_merge(args))
+
+
+async def _cmd_branch_merge(args: argparse.Namespace) -> int:
+    async def _run(session: Any) -> dict[str, Any]:
+        return await MergeEngine(session).merge(
+            source_branch=args.source_branch,
+            target_branch=args.target_branch,
+            strategy=args.strategy,
+            items=args.items or None,
+            conflict=args.conflict,
+        )
+
+    emit(await with_session(_run), args.format)
     return 0

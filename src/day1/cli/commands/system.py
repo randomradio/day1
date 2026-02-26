@@ -9,6 +9,7 @@ from pathlib import Path
 
 import httpx
 
+from day1.cli.commands.common import run_async
 from day1.config import settings
 
 
@@ -42,9 +43,16 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     migrate_cmd = subparsers.add_parser("migrate", help="Run database migrations")
     migrate_cmd.set_defaults(_handler=cmd_migrate)
 
+    init_cmd = subparsers.add_parser("init", help="Initialize database and main branch")
+    init_cmd.set_defaults(_handler=cmd_init)
+
     health_cmd = subparsers.add_parser("health", help="Check API health")
-    health_cmd.add_argument("--base-url", default=f"http://{settings.host}:{settings.port}")
-    health_cmd.add_argument("--format", choices=["table", "json"], default="table")
+    health_cmd.add_argument(
+        "--base-url", default=f"http://{settings.host}:{settings.port}"
+    )
+    health_cmd.add_argument(
+        "--format", choices=["table", "json", "text"], default="table"
+    )
     health_cmd.set_defaults(_handler=cmd_health)
 
 
@@ -81,6 +89,25 @@ def cmd_migrate(_args: argparse.Namespace) -> int:
     return subprocess.call(
         [sys.executable, str(_project_root() / "scripts" / "migrate.py")]
     )
+
+
+def cmd_init(_args: argparse.Namespace) -> int:
+    return run_async(_cmd_init())
+
+
+async def _cmd_init() -> int:
+    from day1.core.branch_manager import BranchManager
+    from day1.db.engine import get_session, init_db
+
+    await init_db()
+    session_gen = get_session()
+    session = await anext(session_gen)
+    try:
+        await BranchManager(session).ensure_main_branch()
+    finally:
+        await session_gen.aclose()
+    print("initialized: ok")
+    return 0
 
 
 def cmd_health(args: argparse.Namespace) -> int:

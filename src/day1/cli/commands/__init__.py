@@ -1,4 +1,3 @@
 """CLI command modules."""
 
-__all__ = ["branches", "memory", "system"]
-
+__all__ = ["branches", "conversation", "memory", "system", "task"]

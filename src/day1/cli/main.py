@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from day1.cli.commands import branches, memory, system
+from day1.cli.commands import branches, conversation, memory, system, task
 from day1.logging_config import setup_logging
 
 
@@ -12,14 +12,15 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="day1",
         description=(
-            "Day1 CLI (MVP): memory write/search, branch ops, "
-            "snapshots, health."
+            "Day1 CLI (MVP): memory write/search, branch ops, " "snapshots, health."
         ),
     )
     subparsers = parser.add_subparsers(dest="command")
 
     memory.register(subparsers)
     branches.register(subparsers)
+    conversation.register(subparsers)
+    task.register(subparsers)
     system.register(subparsers)
     return parser
 
