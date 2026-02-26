@@ -26,7 +26,10 @@ class SessionManager:
         task_id: str | None = None,
         agent_id: str | None = None,
     ) -> Session:
-        """Register a new session."""
+        """Register a new session (idempotent by session_id)."""
+        existing = await self.get_session(session_id)
+        if existing is not None:
+            return existing
         sess = Session(
             session_id=session_id,
             branch_name=branch_name,

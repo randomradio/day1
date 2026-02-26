@@ -38,7 +38,7 @@ from day1.api.routes import (
     templates,
     verification,
 )
-from day1.db.engine import init_db
+from day1.db.engine import close_db, init_db
 
 
 @asynccontextmanager
@@ -50,12 +50,18 @@ async def lifespan(app: FastAPI):
     from day1.core.branch_manager import BranchManager
     from day1.db.engine import get_session
 
-    async for session in get_session():
+    session_gen = get_session()
+    session = await anext(session_gen)
+    try:
         mgr = BranchManager(session)
         await mgr.ensure_main_branch()
-        break
+    finally:
+        await session_gen.aclose()
     logger.info("Day1 API ready — %d routes loaded", len(app.routes))
-    yield
+    try:
+        yield
+    finally:
+        await close_db()
 
 
 app = FastAPI(

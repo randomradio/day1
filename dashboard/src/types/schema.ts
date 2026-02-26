@@ -52,6 +52,50 @@ export interface Fact {
   metadata?: Record<string, unknown>;
 }
 
+export interface KnowledgeGraphNode {
+  id: string;
+  label: string;
+}
+
+export interface KnowledgeGraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  label: string;
+  confidence?: number;
+}
+
+export interface KnowledgeGraphResponse {
+  mode: 'snapshot' | 'entity' | string;
+  entity?: string | null;
+  relations: Array<{
+    id: string;
+    source: string;
+    target: string;
+    relation: string;
+    properties?: Record<string, unknown>;
+    confidence?: number;
+  }>;
+  nodes: KnowledgeGraphNode[];
+  edges: KnowledgeGraphEdge[];
+  count: number;
+}
+
+export interface FactRelatedResponse {
+  fact: Fact;
+  entities: string[];
+  relations: Array<{
+    id: string;
+    source_entity: string;
+    target_entity: string;
+    relation_type: string;
+    confidence: number;
+    properties?: Record<string, unknown>;
+  }>;
+  related_facts: Fact[];
+  count: number;
+}
+
 export interface DiffRow {
   _table: string;
   [column: string]: unknown;

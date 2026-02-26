@@ -20,6 +20,12 @@ class ConversationCherryPick:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
+    async def _rollback_write_failure(self, op_name: str) -> None:
+        """Rollback and close the session after failed write-path operations."""
+        logger.exception("Write path failed in ConversationCherryPick.%s", op_name)
+        await self._session.rollback()
+        await self._session.close()
+
     async def cherry_pick_conversation(
         self,
         conversation_id: str,
@@ -49,32 +55,36 @@ class ConversationCherryPick:
                 f"Conversation {conversation_id} not found"
             )
 
-        # Create copy on target branch
-        new_conv = Conversation(
-            session_id=conv.session_id,
-            agent_id=conv.agent_id,
-            task_id=conv.task_id,
-            branch_name=target_branch,
-            title=conv.title,
-            parent_conversation_id=conv.id,
-            status=conv.status,
-            message_count=conv.message_count,
-            total_tokens=conv.total_tokens,
-            model=conv.model,
-            metadata_json=conv.metadata_json,
-        )
-        self._session.add(new_conv)
-        await self._session.flush()
-
-        messages_copied = 0
-        if include_messages:
-            messages_copied = await self._copy_messages(
-                source_conversation_id=conv.id,
-                target_conversation_id=new_conv.id,
-                target_branch=target_branch,
+        try:
+            # Create copy on target branch
+            new_conv = Conversation(
+                session_id=conv.session_id,
+                agent_id=conv.agent_id,
+                task_id=conv.task_id,
+                branch_name=target_branch,
+                title=conv.title,
+                parent_conversation_id=conv.id,
+                status=conv.status,
+                message_count=conv.message_count,
+                total_tokens=conv.total_tokens,
+                model=conv.model,
+                metadata_json=conv.metadata_json,
             )
+            self._session.add(new_conv)
+            await self._session.flush()
 
-        await self._session.commit()
+            messages_copied = 0
+            if include_messages:
+                messages_copied = await self._copy_messages(
+                    source_conversation_id=conv.id,
+                    target_conversation_id=new_conv.id,
+                    target_branch=target_branch,
+                )
+
+            await self._session.commit()
+        except Exception:
+            await self._rollback_write_failure("cherry_pick_conversation")
+            raise
         await self._session.refresh(new_conv)
 
         return {
@@ -132,47 +142,54 @@ class ConversationCherryPick:
         )
         messages = list(msg_result.scalars().all())
 
-        # Create new conversation on target branch
-        new_title = title or f"Extract from {conv.title or conv.id[:8]} (seq {from_sequence}-{to_sequence})"
-        new_conv = Conversation(
-            session_id=conv.session_id,
-            agent_id=conv.agent_id,
-            task_id=conv.task_id,
-            branch_name=target_branch,
-            title=new_title,
-            parent_conversation_id=conv.id,
-            status="active",
-            message_count=len(messages),
-            total_tokens=sum(m.token_count for m in messages),
-            model=conv.model,
-            metadata_json={
-                "cherry_picked_from": conversation_id,
-                "original_range": [from_sequence, to_sequence],
-            },
-        )
-        self._session.add(new_conv)
-        await self._session.flush()
-
-        # Copy messages with renumbered sequences starting from 1
-        for idx, msg in enumerate(messages, start=1):
-            new_msg = Message(
-                conversation_id=new_conv.id,
-                session_id=msg.session_id,
-                agent_id=msg.agent_id,
-                role=msg.role,
-                content=msg.content,
-                thinking=msg.thinking,
-                tool_calls_json=msg.tool_calls_json,
-                token_count=msg.token_count,
-                model=msg.model,
-                sequence_num=idx,
-                embedding=msg.embedding,
-                branch_name=target_branch,
-                metadata_json=msg.metadata_json,
+        try:
+            # Create new conversation on target branch
+            new_title = title or (
+                f"Extract from {conv.title or conv.id[:8]} "
+                f"(seq {from_sequence}-{to_sequence})"
             )
-            self._session.add(new_msg)
+            new_conv = Conversation(
+                session_id=conv.session_id,
+                agent_id=conv.agent_id,
+                task_id=conv.task_id,
+                branch_name=target_branch,
+                title=new_title,
+                parent_conversation_id=conv.id,
+                status="active",
+                message_count=len(messages),
+                total_tokens=sum(m.token_count for m in messages),
+                model=conv.model,
+                metadata_json={
+                    "cherry_picked_from": conversation_id,
+                    "original_range": [from_sequence, to_sequence],
+                },
+            )
+            self._session.add(new_conv)
+            await self._session.flush()
 
-        await self._session.commit()
+            # Copy messages with renumbered sequences starting from 1
+            for idx, msg in enumerate(messages, start=1):
+                new_msg = Message(
+                    conversation_id=new_conv.id,
+                    session_id=msg.session_id,
+                    agent_id=msg.agent_id,
+                    role=msg.role,
+                    content=msg.content,
+                    thinking=msg.thinking,
+                    tool_calls_json=msg.tool_calls_json,
+                    token_count=msg.token_count,
+                    model=msg.model,
+                    sequence_num=idx,
+                    embedding=msg.embedding,
+                    branch_name=target_branch,
+                    metadata_json=msg.metadata_json,
+                )
+                self._session.add(new_msg)
+
+            await self._session.commit()
+        except Exception:
+            await self._rollback_write_failure("cherry_pick_message_range")
+            raise
         await self._session.refresh(new_conv)
 
         return {
@@ -235,29 +252,33 @@ class ConversationCherryPick:
 
         # Cherry-pick facts
         facts_copied = 0
-        for fact_id in fact_ids:
-            result = await self._session.execute(
-                select(Fact).where(Fact.id == fact_id)
-            )
-            fact = result.scalar_one_or_none()
-            if fact is None:
-                logger.warning("Skipping missing fact %s", fact_id)
-                continue
-            new_fact = Fact(
-                fact_text=fact.fact_text,
-                embedding=fact.embedding,
-                category=fact.category,
-                confidence=fact.confidence,
-                source_type="cherry_pick",
-                source_id=fact.id,
-                session_id=fact.session_id,
-                branch_name=branch_name,
-                metadata_json=fact.metadata_json,
-            )
-            self._session.add(new_fact)
-            facts_copied += 1
+        try:
+            for fact_id in fact_ids:
+                result = await self._session.execute(
+                    select(Fact).where(Fact.id == fact_id)
+                )
+                fact = result.scalar_one_or_none()
+                if fact is None:
+                    logger.warning("Skipping missing fact %s", fact_id)
+                    continue
+                new_fact = Fact(
+                    fact_text=fact.fact_text,
+                    embedding=fact.embedding,
+                    category=fact.category,
+                    confidence=fact.confidence,
+                    source_type="cherry_pick",
+                    source_id=fact.id,
+                    session_id=fact.session_id,
+                    branch_name=branch_name,
+                    metadata_json=fact.metadata_json,
+                )
+                self._session.add(new_fact)
+                facts_copied += 1
 
-        await self._session.commit()
+            await self._session.commit()
+        except Exception:
+            await self._rollback_write_failure("cherry_pick_to_curated_branch")
+            raise
 
         return {
             "branch_name": branch_name,

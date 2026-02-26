@@ -16,8 +16,10 @@ import type {
   CuratedBranchResult,
   DiffResponse,
   Fact,
+  FactRelatedResponse,
   HandoffPacket,
   HandoffRecord,
+  KnowledgeGraphResponse,
   KnowledgeBundle,
   MergeGateResult,
   MergeResult,
@@ -117,6 +119,12 @@ export const api = {
     ),
 
   getFact: (id: string) => fetchJSON<Fact>(`${API}/facts/${id}`),
+
+  getFactRelated: (id: string, branch?: string, limit = 25) => {
+    const qs = new URLSearchParams({ limit: String(limit) });
+    if (branch) qs.set('branch', branch);
+    return fetchJSON<FactRelatedResponse>(`${API}/facts/${id}/related?${qs}`);
+  },
 
   // Observations
   searchObservations: (query: string, branch = 'main') =>
@@ -293,6 +301,25 @@ export const api = {
 
   analyticsConversation: (conversationId: string) =>
     fetchJSON<Record<string, unknown>>(`${API}/analytics/conversations/${conversationId}`),
+
+  // Knowledge graph
+  getKnowledgeGraph: (params?: {
+    entity?: string;
+    relation_type?: string;
+    depth?: number;
+    branch?: string;
+    limit?: number;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params?.entity) qs.set('entity', params.entity);
+    if (params?.relation_type) qs.set('relation_type', params.relation_type);
+    if (params?.depth) qs.set('depth', String(params.depth));
+    if (params?.branch) qs.set('branch', params.branch);
+    if (params?.limit) qs.set('limit', String(params.limit));
+    return fetchJSON<KnowledgeGraphResponse>(
+      `${API}/relations/graph${qs.toString() ? `?${qs}` : ''}`
+    );
+  },
 
   // Scores
   evaluateConversation: (conversationId: string, dimensions?: string[]) =>

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useBranchStore } from '../stores/branchStore';
-import type { BranchStats } from '../types/schema';
 import { api } from '../api/client';
 
 export default function BranchTopologyPanel() {

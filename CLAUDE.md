@@ -48,6 +48,8 @@ All 5 core tables (`facts`, `relations`, `observations`, `conversations`, `messa
 | `docs/architecture-decisions.md` | Architecture decisions, discussion log, evolution plans |
 | `docs/mcp_tools.md` | Adding/modifying MCP server tools |
 | `docs/dashboard.md` | Building/working on frontend dashboard |
+| `docs/E2E_TEST_METHODS.md` | Strict API/CLI/MCP E2E method, latest coverage report summary, and warn explanations |
+| `docs/E2E_REAL_ACCEPTANCE.md` | Valid-input real acceptance run guide, DB verification manifest, and concrete SQL checks |
 
 ## Key Differentiators
 
@@ -150,6 +152,17 @@ Use memory_snapshot with label describing the change
 ## Documentation Maintenance Rules
 
 **IMPORTANT**: Follow these rules to keep docs in sync with code.
+
+### E2E Test Policy (Strict, No Bypass)
+
+- API / CLI / MCP E2E checks must be executed strictly (no manual skipping of endpoints/tools).
+- Use `scripts/e2e_surface.py` for dynamic surface enumeration plus real-chain validation.
+- `scripts/e2e_surface.py` must run the deep API real-agent scenario (`api_agent_real`) in addition to API/CLI/MCP basic real chains.
+- Release-style acceptance should use `scripts/e2e_surface.py --real-only` and preserve `docs/e2e_real_acceptance_latest.json` plus DB manifest artifacts.
+- Preserve the latest machine-readable report in `docs/e2e_surface_latest_report.json`.
+- Surface `warn` is allowed only when it matches the explicit strict baseline in `scripts/e2e_surface.py`; otherwise treat it as `fail`.
+- Every `warn` in surface mode must be explained in `docs/E2E_TEST_METHODS.md`.
+- Any `fail` in E2E surface/real sections must be fixed and rerun before release.
 
 ### When to Update CLAUDE.md
 

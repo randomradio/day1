@@ -83,7 +83,7 @@ async def list_branches(
     }
 
 
-@router.get("/branches/{branch_name}/diff")
+@router.get("/branches/{branch_name:path}/diff")
 async def branch_diff(
     branch_name: str,
     target_branch: str = "main",
@@ -103,7 +103,7 @@ async def branch_diff(
     return diff.to_dict()
 
 
-@router.get("/branches/{branch_name}/diff/native")
+@router.get("/branches/{branch_name:path}/diff/native")
 async def branch_diff_native(
     branch_name: str,
     target_branch: str = "main",
@@ -118,7 +118,7 @@ async def branch_diff_native(
     return {"diffs": diffs, "count": len(diffs)}
 
 
-@router.get("/branches/{branch_name}/diff/native/count")
+@router.get("/branches/{branch_name:path}/diff/native/count")
 async def branch_diff_native_count(
     branch_name: str,
     target_branch: str = "main",
@@ -133,7 +133,7 @@ async def branch_diff_native_count(
     return {"counts": counts}
 
 
-@router.post("/branches/{branch_name}/merge")
+@router.post("/branches/{branch_name:path}/merge")
 async def merge_branch(
     branch_name: str,
     body: MergeRequest,
@@ -161,7 +161,7 @@ async def merge_branch(
     return result
 
 
-@router.delete("/branches/{branch_name}")
+@router.delete("/branches/{branch_name:path}")
 async def archive_branch(
     branch_name: str,
     session: AsyncSession = Depends(get_session),

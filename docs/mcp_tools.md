@@ -619,3 +619,13 @@ tool("knowledge_bundle_list", {
 - **MCP Server**: `src/day1/mcp/mcp_server.py` (stdio mode)
 - **MCP HTTP Server**: `src/day1/mcp/mcp_server_http.py` (SSE mode)
 - **Handler pattern**: Each tool = async function dispatched via `handle_tool_call()`
+
+## CLI / SDK / OTEL Mapping Notes (Day1 MVP)
+
+- `memory_write_fact` -> `day1 write-fact`
+- `memory_write_observation` -> `day1 write-observation`
+- `memory_search` -> `day1 search`
+- `memory_branch_create` / `memory_branch_list` / `memory_branch_switch` -> `day1 branch ...`
+- `memory_snapshot` / `memory_snapshot_list` / `memory_time_travel` -> `day1 snapshot ...` / `day1 time-travel`
+
+Day1 CLI 直接复用同一批 core engines（不经过 HTTP），而 `src/day1/sdk/` 提供 REST 客户端占位；`src/day1/otel/` 为 LangGraph/AutoGen trace 接入提供标准化入口骨架。

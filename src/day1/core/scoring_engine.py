@@ -75,12 +75,13 @@ def _format_messages_for_eval(messages: list[Message], max_chars: int = 30000) -
         content = msg.content or ""
 
         # Include tool call info
-        if msg.tool_calls:
+        tool_calls = getattr(msg, "tool_calls_json", None)
+        if tool_calls:
             try:
                 tools = (
-                    json.loads(msg.tool_calls)
-                    if isinstance(msg.tool_calls, str)
-                    else msg.tool_calls
+                    json.loads(tool_calls)
+                    if isinstance(tool_calls, str)
+                    else tool_calls
                 )
                 tool_names = (
                     [t.get("name", "?") for t in tools]
@@ -246,8 +247,7 @@ class ScoringEngine:
                 value=value,
                 explanation=explanation,
                 branch_name=branch,
-                session_id=session_id,
-            )
+                )
             self._session.add(score)
             results.append(
                 {

@@ -50,7 +50,7 @@ async def get_topology(
     return tree
 
 
-@router.get("/branches/{branch_name}/stats")
+@router.get("/branches/{branch_name:path}/stats")
 async def get_branch_stats(
     branch_name: str,
     session: AsyncSession = Depends(get_session),
@@ -64,7 +64,7 @@ async def get_branch_stats(
     return stats
 
 
-@router.post("/branches/{branch_name}/enrich")
+@router.post("/branches/{branch_name:path}/enrich")
 async def enrich_branch(
     branch_name: str,
     body: EnrichRequest,

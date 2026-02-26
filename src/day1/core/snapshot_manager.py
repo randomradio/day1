@@ -10,7 +10,6 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from day1.config import settings
-from day1.core.branch_manager import _branch_table
 from day1.core.exceptions import SnapshotError
 from day1.db.models import Fact, Observation, Relation, Snapshot
 
@@ -176,10 +175,12 @@ class SnapshotManager:
             raise SnapshotError(f"Invalid timestamp format: {timestamp}")
         ts = timestamp[:19].replace("T", " ")
 
-        table = _branch_table("facts", branch_name)
+        # Facts are currently stored in a shared table with logical branch
+        # isolation via `branch_name`, so time-travel must filter by branch.
+        table = "facts"
 
-        where_parts: list[str] = []
-        params: dict = {"limit": limit}
+        where_parts: list[str] = ["branch_name = :branch_name"]
+        params: dict = {"limit": limit, "branch_name": branch_name}
         if category:
             where_parts.append("category = :category")
             params["category"] = category

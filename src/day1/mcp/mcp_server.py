@@ -14,7 +14,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
-from day1.db.engine import get_session, init_db
+from day1.db.engine import close_db, get_session, init_db
 from day1.mcp.tools import TOOL_DEFINITIONS, handle_tool_call
 
 logger = logging.getLogger("day1.mcp")
@@ -44,11 +44,15 @@ async def list_tools() -> list[Tool]:
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     """Dispatch tool calls to handlers."""
     try:
-        async for session in get_session():
+        session_gen = get_session()
+        session = await anext(session_gen)
+        try:
             result = await handle_tool_call(
                 name, arguments, session, get_active_branch, set_active_branch
             )
             return [TextContent(type="text", text=json.dumps(result, default=str))]
+        finally:
+            await session_gen.aclose()
     except Exception as e:  # Intentional catch-all: MCP protocol boundary
         logger.exception("Tool %s failed", name)
         return [
@@ -67,16 +71,22 @@ async def main() -> None:
     await init_db()
 
     # Ensure main branch exists
-    async for session in get_session():
+    session_gen = get_session()
+    session = await anext(session_gen)
+    try:
         from day1.core.branch_manager import BranchManager
 
         mgr = BranchManager(session)
         await mgr.ensure_main_branch()
-        break
+    finally:
+        await session_gen.aclose()
 
     logger.info("Day1 MCP server starting (stdio)")
-    async with stdio_server() as (read_stream, write_stream):
-        await app.run(read_stream, write_stream, app.create_initialization_options())
+    try:
+        async with stdio_server() as (read_stream, write_stream):
+            await app.run(read_stream, write_stream, app.create_initialization_options())
+    finally:
+        await close_db()
 
 
 if __name__ == "__main__":

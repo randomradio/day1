@@ -110,7 +110,7 @@ async def check_merge_gate(
     )
 
 
-@router.get("/verification/summary/{branch_name}")
+@router.get("/verification/summary/{branch_name:path}")
 async def branch_verification_summary(
     branch_name: str,
     session: AsyncSession = Depends(get_session),

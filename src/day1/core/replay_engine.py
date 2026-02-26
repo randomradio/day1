@@ -127,6 +127,7 @@ class ReplayEngine:
             raise
         except Exception as e:
             raise ReplayError(f"Failed to fork conversation: {e}") from e
+        copied_count = forked.message_count
 
         # Apply config overrides to the forked conversation
         update_vals: dict = {}
@@ -145,7 +146,7 @@ class ReplayEngine:
         if config.tool_filter is not None:
             metadata["tool_filter"] = config.tool_filter
 
-        update_vals["metadata"] = metadata
+        update_vals["metadata_json"] = metadata
         update_vals["status"] = "replaying"
 
         await self._session.execute(
@@ -184,7 +185,7 @@ class ReplayEngine:
             fork_point_message_id=from_message_id,
             config=config_dict,
             status="ready",
-            messages_copied=forked.message_count,
+            messages_copied=copied_count,
             created_at=(
                 forked.created_at.isoformat() if forked.created_at else None
             ),

@@ -216,7 +216,7 @@ async def test_check_ttl_expiry(db_session):
         update(BranchRegistry)
         .where(BranchRegistry.branch_name == "task/temp")
         .values(
-            metadata={"ttl_days": 1},
+            metadata_json={"ttl_days": 1},
             forked_at=datetime.utcnow() - timedelta(days=5),
         )
     )
@@ -240,7 +240,7 @@ async def test_check_ttl_no_expired(db_session):
     await db_session.execute(
         update(BranchRegistry)
         .where(BranchRegistry.branch_name == "task/fresh")
-        .values(metadata={"ttl_days": 30})
+        .values(metadata_json={"ttl_days": 30})
     )
     await db_session.commit()
 

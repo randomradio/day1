@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 
 from sqlalchemy import select, text, update
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from day1.core.exceptions import BranchExistsError, BranchNotFoundError
@@ -39,6 +39,17 @@ class BranchManager:
         self._session = session
 
     @asynccontextmanager
+    async def _write_guard(self, op_name: str):
+        """Rollback and close the session when a write path fails."""
+        try:
+            yield
+        except Exception:
+            logger.exception("Write path failed in BranchManager.%s", op_name)
+            await self._session.rollback()
+            await self._session.close()
+            raise
+
+    @asynccontextmanager
     async def _get_autocommit_conn(self) -> AsyncConnection:
         """Get an autocommit connection from the session's engine.
 
@@ -55,15 +66,20 @@ class BranchManager:
             select(BranchRegistry).where(BranchRegistry.branch_name == "main")
         )
         if result.scalar_one_or_none() is None:
-            self._session.add(
-                BranchRegistry(
-                    branch_name="main",
-                    parent_branch="main",
-                    description="Default memory branch",
-                    status="active",
-                )
-            )
-            await self._session.commit()
+            try:
+                async with self._write_guard("ensure_main_branch"):
+                    self._session.add(
+                        BranchRegistry(
+                            branch_name="main",
+                            parent_branch="main",
+                            description="Default memory branch",
+                            status="active",
+                        )
+                    )
+                    await self._session.commit()
+            except IntegrityError:
+                # Concurrent initializer inserted main first.
+                await self._session.rollback()
 
     async def create_branch(
         self,
@@ -106,29 +122,32 @@ class BranchManager:
         if parent.scalar_one_or_none() is None:
             raise BranchNotFoundError(f"Parent branch '{parent_branch}' not found")
 
-        # Flush and commit ORM work before DATA BRANCH operations
-        await self._session.flush()
+        async with self._write_guard("create_branch"):
+            # Flush and commit ORM work before DATA BRANCH operations
+            await self._session.flush()
 
-        # MO native: zero-copy branch per table (requires autocommit)
-        # Use session's connection to avoid event loop conflicts
-        branch_tables = tables if tables is not None else BRANCH_TABLES
-        async with self._get_autocommit_conn() as ac:
-            for table in branch_tables:
-                parent_tbl = _branch_table(table, parent_branch)
-                branch_tbl = _branch_table(table, branch_name)
-                await ac.execute(
-                    text(f"DATA BRANCH CREATE TABLE `{branch_tbl}` FROM `{parent_tbl}`")
-                )
+            # MO native: zero-copy branch per table (requires autocommit)
+            # Use session's connection to avoid event loop conflicts
+            branch_tables = tables if tables is not None else BRANCH_TABLES
+            async with self._get_autocommit_conn() as ac:
+                for table in branch_tables:
+                    parent_tbl = _branch_table(table, parent_branch)
+                    branch_tbl = _branch_table(table, branch_name)
+                    await ac.execute(
+                        text(
+                            f"DATA BRANCH CREATE TABLE `{branch_tbl}` FROM `{parent_tbl}`"
+                        )
+                    )
 
-        # Register the branch
-        registry = BranchRegistry(
-            branch_name=branch_name,
-            parent_branch=parent_branch,
-            description=description,
-            status="active",
-        )
-        self._session.add(registry)
-        await self._session.commit()
+            # Register the branch
+            registry = BranchRegistry(
+                branch_name=branch_name,
+                parent_branch=parent_branch,
+                description=description,
+                status="active",
+            )
+            self._session.add(registry)
+            await self._session.commit()
         await self._session.refresh(registry)
         return registry
 
@@ -154,6 +173,24 @@ class BranchManager:
             raise BranchNotFoundError(f"Branch '{branch_name}' not found")
         return branch
 
+    async def _native_table_exists(self, table_name: str) -> bool:
+        result = await self._session.execute(
+            text("SHOW TABLES LIKE :table_name"),
+            {"table_name": table_name},
+        )
+        return result.first() is not None
+
+    async def _ensure_native_branch_tables(self, branch_name: str) -> None:
+        missing = [
+            tbl
+            for base in BRANCH_TABLES
+            if not await self._native_table_exists((tbl := _branch_table(base, branch_name)))
+        ]
+        if missing:
+            raise BranchNotFoundError(
+                f"Native branch tables missing for '{branch_name}': {', '.join(missing)}"
+            )
+
     async def diff_branch(
         self,
         source_branch: str,
@@ -167,6 +204,8 @@ class BranchManager:
         """
         await self.get_branch(source_branch)
         await self.get_branch(target_branch)
+        await self._ensure_native_branch_tables(source_branch)
+        await self._ensure_native_branch_tables(target_branch)
 
         all_diffs: list[dict] = []
         for table in BRANCH_TABLES:
@@ -206,6 +245,8 @@ class BranchManager:
         """
         await self.get_branch(source_branch)
         await self.get_branch(target_branch)
+        await self._ensure_native_branch_tables(source_branch)
+        await self._ensure_native_branch_tables(target_branch)
 
         counts: dict[str, int] = {}
         for table in BRANCH_TABLES:
@@ -253,25 +294,28 @@ class BranchManager:
         if conflict in ("skip", "accept"):
             conflict_clause = f" WHEN CONFLICT {conflict.upper()}"
 
-        async with self._get_autocommit_conn() as ac:
-            for table in BRANCH_TABLES:
-                src = _branch_table(table, source_branch)
-                tgt = _branch_table(table, target_branch)
-                await ac.execute(
-                    text(f"DATA BRANCH MERGE `{src}` INTO `{tgt}`{conflict_clause}")
-                )
+        async with self._write_guard("merge_branch_native"):
+            async with self._get_autocommit_conn() as ac:
+                for table in BRANCH_TABLES:
+                    src = _branch_table(table, source_branch)
+                    tgt = _branch_table(table, target_branch)
+                    await ac.execute(
+                        text(
+                            f"DATA BRANCH MERGE `{src}` INTO `{tgt}`{conflict_clause}"
+                        )
+                    )
 
-        # Update branch status
-        await self._session.execute(
-            update(BranchRegistry)
-            .where(BranchRegistry.branch_name == source_branch)
-            .values(
-                status="merged",
-                merged_at=datetime.utcnow(),
-                merge_strategy=f"native_{conflict}",
+            # Update branch status
+            await self._session.execute(
+                update(BranchRegistry)
+                .where(BranchRegistry.branch_name == source_branch)
+                .values(
+                    status="merged",
+                    merged_at=datetime.utcnow(),
+                    merge_strategy=f"native_{conflict}",
+                )
             )
-        )
-        await self._session.commit()
+            await self._session.commit()
 
         return {
             "status": "merged",
@@ -287,15 +331,16 @@ class BranchManager:
         if branch_name == "main":
             raise BranchExistsError("Cannot archive the main branch")
 
-        # Drop branch-specific tables (autocommit for DDL)
-        async with self._get_autocommit_conn() as ac:
-            for table in BRANCH_TABLES:
-                tbl = _branch_table(table, branch_name)
-                await ac.execute(text(f"DROP TABLE IF EXISTS `{tbl}`"))
+        async with self._write_guard("archive_branch"):
+            # Drop branch-specific tables (autocommit for DDL)
+            async with self._get_autocommit_conn() as ac:
+                for table in BRANCH_TABLES:
+                    tbl = _branch_table(table, branch_name)
+                    await ac.execute(text(f"DROP TABLE IF EXISTS `{tbl}`"))
 
-        await self._session.execute(
-            update(BranchRegistry)
-            .where(BranchRegistry.branch_name == branch_name)
-            .values(status="archived")
-        )
-        await self._session.commit()
+            await self._session.execute(
+                update(BranchRegistry)
+                .where(BranchRegistry.branch_name == branch_name)
+                .values(status="archived")
+            )
+            await self._session.commit()

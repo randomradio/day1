@@ -104,12 +104,14 @@ class TemplateEngine:
             raise TemplateError(f"Failed to create template branch: {e}") from e
 
         # Count content on the new template branch
+        # Count from source branch. DATA BRANCH creates zero-copy table clones and
+        # row-level branch_name values are not rewritten automatically.
         fact_count = await self._session.scalar(
-            select(func.count(Fact.id)).where(Fact.branch_name == branch_name)
+            select(func.count(Fact.id)).where(Fact.branch_name == source_branch)
         ) or 0
         conv_count = await self._session.scalar(
             select(func.count(Conversation.id)).where(
-                Conversation.branch_name == branch_name
+                Conversation.branch_name == source_branch
             )
         ) or 0
 
@@ -225,11 +227,11 @@ class TemplateEngine:
 
         # Count content
         fact_count = await self._session.scalar(
-            select(func.count(Fact.id)).where(Fact.branch_name == branch_name)
+            select(func.count(Fact.id)).where(Fact.branch_name == source_branch)
         ) or 0
         conv_count = await self._session.scalar(
             select(func.count(Conversation.id)).where(
-                Conversation.branch_name == branch_name
+                Conversation.branch_name == source_branch
             )
         ) or 0
 

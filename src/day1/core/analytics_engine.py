@@ -71,10 +71,6 @@ class AnalyticsEngine:
         sess_result = await self._session.execute(
             select(Session).where(Session.session_id == session_id)
         )
-        sess = sess_result.scalar_one_or_none()
-        if sess is None:
-            return {"error": f"Session {session_id} not found"}
-
         # Conversations in this session
         conv_result = await self._session.execute(
             select(Conversation)
@@ -82,6 +78,9 @@ class AnalyticsEngine:
             .order_by(Conversation.created_at.asc())
         )
         conversations = list(conv_result.scalars().all())
+        sess = sess_result.scalar_one_or_none()
+        if sess is None and not conversations:
+            return {"error": f"Session {session_id} not found"}
 
         # Facts created during this session
         fact_count_result = await self._session.execute(
@@ -125,13 +124,17 @@ class AnalyticsEngine:
 
         return {
             "session_id": session_id,
-            "status": sess.status,
-            "branch_name": sess.branch_name,
+            "status": sess.status if sess else "unknown",
+            "branch_name": (
+                sess.branch_name if sess else (
+                    conversations[0].branch_name if conversations else "main"
+                )
+            ),
             "started_at": (
-                sess.started_at.isoformat() if sess.started_at else None
+                sess.started_at.isoformat() if sess and sess.started_at else None
             ),
             "ended_at": (
-                sess.ended_at.isoformat() if sess.ended_at else None
+                sess.ended_at.isoformat() if sess and sess.ended_at else None
             ),
             "conversations": len(conversations),
             "total_messages": total_messages,

@@ -12,6 +12,7 @@ from day1.core.exceptions import (
     MessageNotFoundError,
 )
 from day1.core.message_engine import MessageEngine
+from day1.core.session_manager import SessionManager
 from day1.db.models import Conversation, Message
 
 
@@ -32,6 +33,13 @@ class ConversationEngine:
         metadata: dict | None = None,
     ) -> Conversation:
         """Create a new conversation."""
+        if session_id:
+            await SessionManager(self._session).create_session(
+                session_id=session_id,
+                branch_name=branch_name,
+                task_id=task_id,
+                agent_id=agent_id,
+            )
         conv = Conversation(
             session_id=session_id,
             agent_id=agent_id,

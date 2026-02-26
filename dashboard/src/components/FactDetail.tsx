@@ -1,5 +1,6 @@
 import { useBranchStore } from '../stores/branchStore';
 import type { Fact } from '../types/schema';
+import CrossReferencePanel from './CrossReferencePanel';
 
 function FactCard({ fact }: { fact: Fact }) {
   return (
@@ -33,29 +34,33 @@ function FactCard({ fact }: { fact: Fact }) {
 }
 
 export default function FactDetail() {
-  const { facts, timeTravelResults, timeTravelTs } = useBranchStore();
+  const { facts, timeTravelResults, timeTravelTs, activeBranch } = useBranchStore();
 
   const displayFacts = timeTravelTs ? timeTravelResults : facts;
   const title = timeTravelTs
     ? `Time Travel @ ${timeTravelTs}`
     : `${facts.length} results`;
+  const focusFact = displayFacts[0];
 
   return (
-    <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-gray-700">{title}</h3>
-      </div>
-      {displayFacts.length === 0 ? (
-        <p className="text-sm text-gray-500">
-          No facts found. Try searching or selecting a branch.
-        </p>
-      ) : (
-        <div className="space-y-2 max-h-96 overflow-y-auto">
-          {displayFacts.map((f) => (
-            <FactCard key={f.id} fact={f} />
-          ))}
+    <div className="space-y-4">
+      <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-gray-700">{title}</h3>
         </div>
-      )}
+        {displayFacts.length === 0 ? (
+          <p className="text-sm text-gray-500">
+            No facts found. Try searching or selecting a branch.
+          </p>
+        ) : (
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {displayFacts.map((f) => (
+              <FactCard key={f.id} fact={f} />
+            ))}
+          </div>
+        )}
+      </div>
+      <CrossReferencePanel factId={focusFact?.id} branch={activeBranch} />
     </div>
   );
 }

@@ -182,3 +182,17 @@ async def test_snapshot_operations(client):
     resp = await client.get("/api/v1/snapshots")
     assert resp.status_code == 200
     assert len(resp.json()["snapshots"]) >= 1
+
+
+@pytest.mark.asyncio
+async def test_analytics_trends_rejects_invalid_branch_name_payload(client):
+    resp = await client.get(
+        "/api/v1/analytics/trends",
+        params={"branch_name": "'; DROP TABLE messages; --"},
+    )
+    assert resp.status_code == 400
+    assert "Invalid branch name" in resp.json()["detail"]
+
+    # DB should still be usable after rejected request
+    health = await client.get("/health")
+    assert health.status_code == 200

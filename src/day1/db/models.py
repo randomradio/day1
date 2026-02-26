@@ -378,7 +378,7 @@ class TemplateBranch(Base):
     __tablename__ = "template_branches"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
     branch_name: Mapped[str] = mapped_column(String(100), nullable=False)

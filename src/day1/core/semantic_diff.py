@@ -126,6 +126,15 @@ class SemanticDiffEngine:
             ),
         }
 
+    async def _load_messages(self, conversation_id: str) -> list[Message]:
+        """Load messages for a conversation in sequence order."""
+        result = await self._session.execute(
+            select(Message)
+            .where(Message.conversation_id == conversation_id)
+            .order_by(Message.sequence_num.asc())
+        )
+        return list(result.scalars().all())
+
     # ------------------------------------------------------------------
     # Layer 1: Action Trace
     # ------------------------------------------------------------------

@@ -7,6 +7,7 @@ import re
 from datetime import datetime, timedelta
 
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from day1.core.branch_manager import BranchManager
@@ -44,6 +45,75 @@ class BranchTopologyEngine:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
         self._branch_mgr = BranchManager(session)
+
+    async def _rollback_write_failure(self, op_name: str, err: Exception) -> None:
+        """Reset session state after a failed write-path operation."""
+        logger.warning("Write path failed in BranchTopologyEngine.%s: %s", op_name, err)
+        await self._session.rollback()
+        await self._session.close()
+
+    async def _archive_candidate_with_lock(self, branch_name: str) -> bool:
+        """Claim a branch row with SKIP LOCKED, then archive once."""
+        try:
+            locked_branch = await self._session.scalar(
+                select(BranchRegistry)
+                .where(
+                    BranchRegistry.branch_name == branch_name,
+                    BranchRegistry.branch_name != "main",
+                    BranchRegistry.status.in_(["active", "merged"]),
+                )
+                .with_for_update(skip_locked=True)
+            )
+            if locked_branch is None:
+                return False
+            await self._branch_mgr.archive_branch(branch_name)
+            return True
+        except ProgrammingError as e:
+            # Some MatrixOne versions don't support SKIP LOCKED yet.
+            if "SKIP LOCKED" not in str(e).upper():
+                raise
+            await self._session.rollback()
+
+        # Fallback: atomically claim the candidate via a status transition.
+        current_status = await self._session.scalar(
+            select(BranchRegistry.status).where(
+                BranchRegistry.branch_name == branch_name,
+                BranchRegistry.branch_name != "main",
+                BranchRegistry.status.in_(["active", "merged"]),
+            )
+        )
+        if current_status is None:
+            return False
+
+        claim = await self._session.execute(
+            update(BranchRegistry)
+            .where(
+                BranchRegistry.branch_name == branch_name,
+                BranchRegistry.status == current_status,
+            )
+            .values(status="archiving")
+        )
+        if (claim.rowcount or 0) == 0:
+            await self._session.rollback()
+            return False
+
+        await self._session.commit()
+        try:
+            await self._branch_mgr.archive_branch(branch_name)
+        except Exception:
+            # Best-effort restore the claimed status if archival fails.
+            await self._session.rollback()
+            await self._session.execute(
+                update(BranchRegistry)
+                .where(
+                    BranchRegistry.branch_name == branch_name,
+                    BranchRegistry.status == "archiving",
+                )
+                .values(status=current_status)
+            )
+            await self._session.commit()
+            raise
+        return True
 
     async def get_topology(
         self,
@@ -171,12 +241,16 @@ class BranchTopologyEngine:
             metadata["tags"] = tags
         metadata["enriched_at"] = datetime.utcnow().isoformat()
 
-        await self._session.execute(
-            update(BranchRegistry)
-            .where(BranchRegistry.branch_name == branch_name)
-            .values(metadata=metadata)
-        )
-        await self._session.commit()
+        try:
+            await self._session.execute(
+                update(BranchRegistry)
+                .where(BranchRegistry.branch_name == branch_name)
+                .values(metadata_json=metadata)
+            )
+            await self._session.commit()
+        except Exception as e:
+            await self._rollback_write_failure("enrich_branch_metadata", e)
+            raise
 
         # Re-fetch to return updated state
         return await self._branch_mgr.get_branch(branch_name)
@@ -238,9 +312,11 @@ class BranchTopologyEngine:
         if not dry_run:
             for c in candidates:
                 try:
-                    await self._branch_mgr.archive_branch(c["branch_name"])
-                    archived += 1
+                    archived += int(
+                        await self._archive_candidate_with_lock(c["branch_name"])
+                    )
                 except Exception as e:
+                    await self._rollback_write_failure("apply_auto_archive", e)
                     logger.warning("Failed to archive %s: %s", c["branch_name"], e)
 
         return {"candidates": candidates, "archived": archived}

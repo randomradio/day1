@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from day1.core.relation_engine import RelationEngine
 from day1.db.engine import get_session
+from day1.db.models import Relation
 
 router = APIRouter()
 
@@ -42,20 +44,79 @@ async def create_relation(
 
 @router.get("/relations/graph")
 async def graph_query(
-    entity: str,
+    entity: str | None = None,
     relation_type: str | None = None,
     depth: int = 1,
     branch: str = "main",
+    limit: int = 200,
     session: AsyncSession = Depends(get_session),
 ):
+    """Graph query.
+
+    - With `entity`: BFS traversal around an entity (existing behavior).
+    - Without `entity`: graph snapshot placeholder for dashboard/SDK integration.
+    """
     engine = RelationEngine(session)
-    results = await engine.graph_query(
-        entity=entity,
-        relation_type=relation_type,
-        depth=depth,
-        branch_name=branch,
-    )
-    return {"relations": results, "count": len(results)}
+    if entity:
+        results = await engine.graph_query(
+            entity=entity,
+            relation_type=relation_type,
+            depth=depth,
+            branch_name=branch,
+        )
+    else:
+        stmt = (
+            select(Relation)
+            .where(
+                Relation.branch_name == branch,
+                Relation.valid_to.is_(None),
+            )
+            .order_by(Relation.created_at.desc())
+            .limit(limit)
+        )
+        if relation_type:
+            stmt = stmt.where(Relation.relation_type == relation_type)
+        rel_rows = (await session.execute(stmt)).scalars().all()
+        results = [
+            {
+                "source": r.source_entity,
+                "target": r.target_entity,
+                "relation": r.relation_type,
+                "properties": r.properties,
+                "confidence": r.confidence,
+                "id": r.id,
+            }
+            for r in rel_rows
+        ]
+
+    node_seen: set[str] = set()
+    nodes: list[dict[str, str]] = []
+    for rel in results:
+        for entity_name in (rel["source"], rel["target"]):
+            if entity_name in node_seen:
+                continue
+            node_seen.add(entity_name)
+            nodes.append({"id": entity_name, "label": entity_name})
+
+    edges = [
+        {
+            "id": rel["id"],
+            "source": rel["source"],
+            "target": rel["target"],
+            "label": rel["relation"],
+            "confidence": rel.get("confidence"),
+        }
+        for rel in results
+    ]
+
+    return {
+        "mode": "entity" if entity else "snapshot",
+        "entity": entity,
+        "relations": results,
+        "nodes": nodes,
+        "edges": edges,
+        "count": len(results),
+    }
 
 
 @router.get("/relations")

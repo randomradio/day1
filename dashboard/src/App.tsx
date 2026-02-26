@@ -10,6 +10,7 @@ import ReplayList from './components/ReplayList';
 import SemanticDiffView from './components/SemanticDiffView';
 import MessageDetailPanel from './components/MessageDetailPanel';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
+import KnowledgeGraph from './components/KnowledgeGraph';
 import { useBranchStore } from './stores/branchStore';
 import { useConversationStore } from './stores/conversationStore';
 
@@ -157,6 +158,7 @@ export default function App() {
                       <Timeline />
                       <MergePanel />
                       <FactDetail />
+                      <KnowledgeGraph />
                     </div>
                   </div>
                 )}

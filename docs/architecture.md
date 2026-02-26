@@ -219,3 +219,12 @@ All hooks are branch-aware (respect `BM_BRANCH` env var) and resilient (embeddin
 | Dashboard | `dashboard/` (React + Vite + React Flow + D3.js + Zustand + Tailwind) |
 | Tests | `tests/test_core/` (9 test files) + `tests/conftest.py` |
 | Config | `src/day1/config.py` |
+
+## Day1 MVP Additions (2026-02-25)
+
+- **CLI MVP**: `src/day1/cli/` 新增本地命令入口，覆盖 fact/observation/search/branch/snapshot/time-travel/health。
+- **OTEL Placeholder**: `src/day1/otel/` 提供 collector/server/instrumentation 骨架，作为 Day2 trace 落库入口。
+- **Knowledge Graph API Placeholder**:
+  - `GET /api/v1/relations/graph` 支持无 `entity` 的图谱快照模式（nodes/edges）。
+  - `GET /api/v1/facts/{id}/related` 提供交叉引用占位结果（entities/relations/related_facts）。
+- **REST SDK Placeholder**: `src/day1/sdk/` 提供 `Day1Client`（health / write_fact / search / graph / related）。

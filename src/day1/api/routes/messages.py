@@ -152,19 +152,6 @@ async def list_messages(
     }
 
 
-@router.get("/messages/{message_id}", response_model=MessageResponse)
-async def get_message(
-    message_id: str,
-    session: AsyncSession = Depends(get_session),
-):
-    engine = MessageEngine(session, get_embedding_provider())
-    try:
-        msg = await engine.get_message(message_id)
-    except MessageNotFoundError:
-        raise HTTPException(status_code=404, detail="Message not found")
-    return _msg_response(msg)
-
-
 @router.get("/messages/search")
 async def search_messages(
     query: str,
@@ -186,3 +173,16 @@ async def search_messages(
         limit=limit,
     )
     return {"results": results, "count": len(results)}
+
+
+@router.get("/messages/{message_id}", response_model=MessageResponse)
+async def get_message(
+    message_id: str,
+    session: AsyncSession = Depends(get_session),
+):
+    engine = MessageEngine(session, get_embedding_provider())
+    try:
+        msg = await engine.get_message(message_id)
+    except MessageNotFoundError:
+        raise HTTPException(status_code=404, detail="Message not found")
+    return _msg_response(msg)

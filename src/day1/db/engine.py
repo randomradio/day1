@@ -103,6 +103,22 @@ async def init_db() -> None:
                     logger.debug("Fulltext index may already exist: %s", e)
 
 
+async def close_db() -> None:
+    """Dispose the global engine/session factory.
+
+    This is primarily used by short-lived CLI/test scripts to avoid aiomysql
+    connection cleanup happening after the event loop has already closed.
+    """
+    global _engine, _session_factory
+
+    engine = _engine
+    _session_factory = None
+    _engine = None
+
+    if engine is not None:
+        await engine.dispose()
+
+
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """Yield an async database session."""
     if _session_factory is None:
