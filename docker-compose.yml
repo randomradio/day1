@@ -22,8 +22,8 @@ services:
       - .env
     environment:
       # Override DB URL to point to the local MatrixOne container
-      # MatrixOne 2.0 default: root/111, use 'mo_catalog' as default db
-      - BM_DATABASE_URL=mysql+aiomysql://root:111@matrixone:6001/mo_catalog
+      # MatrixOne 2.0 default: root/111, use 'day1' as default db
+      - BM_DATABASE_URL=mysql+aiomysql://root:111@matrixone:6001/day1
       - BM_HOST=0.0.0.0
     depends_on:
       - matrixone
