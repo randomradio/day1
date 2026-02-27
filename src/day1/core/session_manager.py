@@ -6,6 +6,7 @@ from datetime import datetime
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 
 from day1.db.models import Conversation, Fact, Message, Observation, Session
 
@@ -40,8 +41,17 @@ class SessionManager:
             agent_id=agent_id,
         )
         self._session.add(sess)
-        await self._session.commit()
-        return sess
+        try:
+            await self._session.commit()
+            return sess
+        except IntegrityError:
+            # MatrixOne may briefly return a stale read on the preceding SELECT.
+            # Treat duplicate session_id insert as idempotent and re-read.
+            await self._session.rollback()
+            existing = await self.get_session(session_id)
+            if existing is not None:
+                return existing
+            raise
 
     async def get_session(self, session_id: str) -> Session | None:
         """Get session by ID."""

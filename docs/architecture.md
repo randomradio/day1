@@ -2,7 +2,7 @@
 
 Day1 system design and integration points. Read this when understanding how components connect.
 
-**Last updated**: 2026-02-24
+**Last updated**: 2026-02-26
 
 ## Layer Architecture
 
@@ -18,8 +18,8 @@ Day1 system design and integration points. Read this when understanding how comp
 │                                                          │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
 │  │ Claude Code   │  │  MCP Server  │  │   REST API   │  │
-│  │  Plugin       │  │ (stdio/SSE)  │  │  (FastAPI)   │  │
-│  │ (11 Hooks)    │  │  42 tools    │  │  85+ endpts  │  │
+│  │  Plugin       │  │ (HTTP /mcp)  │  │  (FastAPI)   │  │
+│  │ (11 Hooks)    │  │  52 tools    │  │  85+ endpts  │  │
 │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  │
 │         └──────────────────┼─────────────────┘          │
 │                            ▼                             │
@@ -212,8 +212,8 @@ All hooks are branch-aware (respect `BM_BRANCH` env var) and resilient (embeddin
 |-----------|------|
 | Core Engines | `src/day1/core/` (19 engines + embedding + llm + exceptions) |
 | Database Models | `src/day1/db/models.py` |
-| MCP Server | `src/day1/mcp/mcp_server.py` |
-| MCP Tools | `src/day1/mcp/tools.py` (29 tools) |
+| MCP Server (HTTP `streamable_http`) | `src/day1/mcp/mcp_server.py` + `src/day1/api/app.py` (`/mcp`) |
+| MCP Tools | `src/day1/mcp/tools.py` (52 tools) |
 | Hooks | `src/day1/hooks/` (11 hook files) |
 | REST API | `src/day1/api/app.py` + `src/day1/api/routes/` (13 route files) |
 | Dashboard | `dashboard/` (React + Vite + React Flow + D3.js + Zustand + Tailwind) |

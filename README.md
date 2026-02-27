@@ -13,6 +13,8 @@ cp .env.example .env          # edit API keys as needed
 docker compose up -d --build
 ```
 
+For local evaluation without real embedding credentials, set `BM_EMBEDDING_PROVIDER=mock` in `.env` before starting services.
+
 | Service | URL |
 |---------|-----|
 | Dashboard (Nginx) | http://localhost:9904 |
@@ -34,17 +36,26 @@ Run the API smoke test against the Docker API port:
 ./scripts/smoke_test.sh http://127.0.0.1:9903
 ```
 
-### MCP in Docker (stdio, no TCP port)
+### MCP in Docker (HTTP `/mcp`)
 
-Day1 MCP currently uses `stdio` transport. It is not an HTTP service and does not expose a port.
+Day1 MCP is exposed via **HTTP `streamable_http`** and mounted into the same FastAPI service.
 
-Run it inside the Docker `api` container on demand:
+- MCP endpoint: `http://localhost:9903/mcp`
+- Transport: `streamable_http`
+
+Quick verification (HTTP service must already be up):
 
 ```bash
-docker compose exec -T api python -m day1.mcp.mcp_server
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:9903/health
 ```
 
-This command is what your MCP client (for example Claude Code) should execute.
+Configure Claude Code (project scope) to connect over HTTP:
+
+```bash
+claude mcp add --scope project --transport http day1 http://127.0.0.1:9903/mcp
+claude mcp get day1
+claude mcp list
+```
 
 ### Remote Client Access (Host → Client)
 
@@ -54,20 +65,15 @@ If your client machine can reach the host machine:
 - API: `http://<HOST_IP>:9903`
 - API Docs: `http://<HOST_IP>:9903/docs`
 
-For MCP, use SSH to launch the stdio server on the host (inside Docker):
+For MCP (HTTP), point your client to:
 
-```json
-{
-  "mcpServers": {
-    "day1": {
-      "command": "ssh",
-      "args": [
-        "user@HOST",
-        "cd /home/momo/src/day1 && docker compose exec -T api python -m day1.mcp.mcp_server"
-      ]
-    }
-  }
-}
+- MCP: `http://<HOST_IP>:9903/mcp`
+
+Claude Code example (run on the client machine):
+
+```bash
+claude mcp add --transport http day1 http://<HOST_IP>:9903/mcp
+claude mcp get day1
 ```
 
 ## Quick Start (Local Dev)
@@ -90,7 +96,7 @@ cd dashboard && npm install && npm run dev
 uv run day1 health --format json
 ```
 
-## Local Usage (API / CLI / MCP)
+## Local Usage (API / CLI / MCP HTTP)
 
 ### REST API
 
@@ -113,19 +119,21 @@ uv run day1 snapshot create --branch demo/local --label local-check --format jso
 uv run day1 time-travel 2099-01-01T00:00:00Z --branch demo/local --format json
 ```
 
-### MCP Server (stdio)
+### MCP (HTTP endpoint)
+
+MCP is mounted into the FastAPI app:
+
+- Local dev: `http://127.0.0.1:8000/mcp`
+- Docker: `http://127.0.0.1:9903/mcp`
+
+Claude Code (local dev API):
 
 ```bash
-uv run python -m day1.mcp.mcp_server
+claude mcp add --scope project --transport http day1 http://127.0.0.1:8000/mcp
+claude mcp get day1
 ```
 
 See tool reference in `docs/mcp_tools.md`.
-
-Docker variant (runs the same MCP server inside the `api` container):
-
-```bash
-docker compose exec -T api python -m day1.mcp.mcp_server
-```
 
 ## Testing: Real Acceptance vs Negative Surface
 
@@ -163,7 +171,7 @@ This includes negative/synthetic input coverage. See `docs/E2E_TEST_METHODS.md` 
 ```
 Clients (Claude Code / Cursor / Dashboard / Any MCP Client)
     |
-    +-- MCP Server (50+ tools, stdio transport)
+    +-- MCP Server (50+ tools, HTTP streamable_http @ /mcp)
     |
     +-- REST API (FastAPI, 65+ endpoints)
             |
@@ -185,7 +193,7 @@ Clients (Claude Code / Cursor / Dashboard / Any MCP Client)
 - **LLM-as-Judge Scoring** -- Evaluate conversation quality on arbitrary dimensions.
 - **Multi-Agent Tasks** -- Create tasks with objectives, assign agents with isolated branches, merge results.
 - **Time Travel** -- Query facts at any historical timestamp via MatrixOne PITR.
-- **MCP-First** -- 50+ tools exposed via Model Context Protocol for any compatible client.
+- **MCP-First** -- 50+ tools exposed via HTTP MCP (`streamable_http`, `/mcp`) for compatible clients.
 
 ## Security
 

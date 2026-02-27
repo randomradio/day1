@@ -1,7 +1,9 @@
 {
-  "generated_at": "2026-02-26T04:49:05Z",
-  "base_url": "http://127.0.0.1:8000",
-  "api_log_path": "/tmp/day1-e2e-api-1v6o9si9.log",
+  "generated_at": "2026-02-26T08:46:09Z",
+  "base_url": "http://127.0.0.1:8012",
+  "mcp_url": "http://127.0.0.1:8012/mcp",
+  "mcp_transport": "streamable_http",
+  "api_log_path": "/tmp/day1-e2e-api-yo58m35x.log",
   "sections": [
     {
       "name": "api_surface",
@@ -497,8 +499,8 @@
     },
     {
       "name": "cli_surface",
-      "total": 15,
-      "passed": 15,
+      "total": 29,
+      "passed": 29,
       "warnings": 0,
       "failed": 0,
       "failures": [],
@@ -533,17 +535,17 @@
     }
   ],
   "totals": {
-    "total": 291,
-    "passed": 233,
+    "total": 305,
+    "passed": 247,
     "warnings": 58,
     "failed": 0
   },
   "real_dataset": {
     "api_real": {
       "api_real_chain": {
-        "branch": "e2e-api-1772081347",
-        "session_id": "e2e-api-session-1772081347",
-        "fact_id": "e10259c1-31ee-4ae1-80a1-1ede76c2fd25",
+        "branch": "e2e-api-1772095571",
+        "session_id": "e2e-api-session-1772095571",
+        "fact_id": "55ef4b85-a019-40f4-bf48-de51d0a3deb2",
         "route_hits": [
           "GET /api/v1/facts/search",
           "GET /api/v1/facts/{fact_id}/related",
@@ -559,26 +561,26 @@
     },
     "api_agent_real": {
       "api_agent_real_summary": {
-        "session_id": "e2e-agent-session-1772081348",
-        "agent_id": "agent-1772081348",
-        "base_branch": "e2e-agent-base-1772081348",
-        "target_branch": "e2e-agent-target-1772081348",
-        "curated_branch": "e2e-agent-curated-1772081348",
-        "import_branch": "e2e-agent-import-1772081348",
-        "cherry_branch": "e2e-agent-cherry-1772081348",
-        "template_name": "E2E Agent Template 1772081348",
-        "template_inst_branch": "e2e-agent-template-inst-1772081348",
-        "task_branch": "task/e2e-agent-task-1772081348",
-        "task_id": "9cc5a16f-072c-4043-8a55-e8825990f12e",
-        "conversation_id": "db8883d2-b5fe-4dda-a785-73fa2d124ce3",
-        "fork_conversation_id": "c8f6f7d8-82f1-4f8c-9c80-f58ad4ca6359",
-        "fact_id": "a09cfbc6-1f2b-43af-b573-c9b3d8ef0d3d",
-        "fact2_id": "588ee715-544c-4890-af9f-9c7e61dd1680",
-        "snapshot_id": "3cbba044-e4e8-4eaa-b1c5-b788119cc2ff",
-        "relation_id": "6e186b21-489a-497b-b0c2-c28abfe2158b",
-        "handoff_id": "b110ce8d-a505-4197-ae49-17d9fb53f7dd",
-        "bundle_id": "61199478-9b1d-43d0-bd20-6f6078ffc7be",
-        "replay_id": "c8127d63-41a8-41c9-a2bc-1af196e0364e",
+        "session_id": "e2e-agent-session-1772095572",
+        "agent_id": "agent-1772095572",
+        "base_branch": "e2e-agent-base-1772095572",
+        "target_branch": "e2e-agent-target-1772095572",
+        "curated_branch": "e2e-agent-curated-1772095572",
+        "import_branch": "e2e-agent-import-1772095572",
+        "cherry_branch": "e2e-agent-cherry-1772095572",
+        "template_name": "E2E Agent Template 1772095572",
+        "template_inst_branch": "e2e-agent-template-inst-1772095572",
+        "task_branch": "task/e2e-agent-task-1772095572",
+        "task_id": "607685a2-c356-490b-8c51-2180f3c9efa2",
+        "conversation_id": "ad346846-3f26-4ca9-a846-ed350d9f0836",
+        "fork_conversation_id": "228e18fc-45cc-4224-93e5-68c05f2cd58c",
+        "fact_id": "0003fc45-61db-439b-8e53-996c24ec6123",
+        "fact2_id": "8763454d-3e28-4ff3-9d71-8fabe145198f",
+        "snapshot_id": "d9b3236c-8c3e-4d3c-a532-05febdbfa776",
+        "relation_id": "0b550a81-7833-4255-a2aa-c9a14a6951db",
+        "handoff_id": "47976951-3ef3-46d7-b75d-cc5acdbb6d3a",
+        "bundle_id": "6d0721ea-d3ca-42cb-8228-f89821a6af42",
+        "replay_id": "7b315d2c-2049-4a43-8034-dccbd6118a67",
         "route_hits": [
           "DELETE /api/v1/branches/{branch_name:path}",
           "GET /api/v1/agents/{agent_id}/timeline",
@@ -681,38 +683,45 @@
     },
     "cli_real": {
       "cli_real_summary": {
-        "branch": "e2e-cli-1772081360",
-        "session_id": "e2e-cli-session-1772081360",
-        "fact_id": "770ef0fb-138f-4209-bbe4-0d32ef9ae6f0",
-        "observation_id": "fe66de02-ea69-42c7-b11a-7284026a0000",
+        "branch": "e2e-cli-1772095583",
+        "session_id": "e2e-cli-session-1772095583",
+        "fact_id": "79956b23-25a2-4785-9844-ef5b9aecb2f7",
+        "observation_id": "01477750-7d41-4a45-8630-cfe44c59b1b2",
         "search_count": 1,
-        "snapshot_id": "257b87af-7eb7-44e7-b6ca-1f6225892a8e",
+        "snapshot_id": "142f1730-def0-4918-92e8-710aacf1b1b6",
         "time_travel_count": 1,
         "health_status": "ok"
       }
     },
     "mcp_surface": {
       "mcp_surface_summary": {
+        "transport": "streamable_http",
+        "mcp_url": "http://127.0.0.1:8012/mcp",
+        "mcp_session_id": "487392cdbe6742a58e20a97b05a3a11a",
+        "listed_tools": 52,
         "ctx": {
-          "branch": "e2e-mcp-1772081376",
-          "fact_id": "e8279426-324d-4e88-b0d0-bc1842759cbd",
-          "session_id": "e2e-mcp-session-1772081377",
-          "conversation_id": "fb83b78e-0e1d-4001-948a-36e598525478",
-          "message_id": "97228dc4-d697-4ec5-8f33-8e5d65573deb",
-          "task_id": "18674967-6d49-4719-9097-edbd255a3afd",
-          "fork_conversation_id": "04ddea59-7f81-45cc-b406-7a41fcf4e220",
-          "replay_id": "bfb72cd6-5e02-42d5-9d30-d26db6392ad7",
-          "template_name": "E2E MCP Template 1772081380",
-          "handoff_id": "8f3708eb-2689-4fa9-a02a-34894d871a93",
-          "bundle_id": "8be2530d-47d3-4461-92a8-4761c22bcddc"
+          "branch": "e2e-mcp-1772095596",
+          "fact_id": "0a867dc2-d809-45f5-ad53-25a590ccb7e0",
+          "session_id": "e2e-mcp-session-1772095597",
+          "conversation_id": "378682e9-385a-41f8-a9b5-6a81166e47d6",
+          "message_id": "1f964bd6-4f5b-4c89-9677-8856c093392e",
+          "task_id": "8ab2f15d-c359-40f9-a288-58453bbff4f3",
+          "fork_conversation_id": "742ca1c3-411b-4cba-ae93-a0f179dd17e9",
+          "replay_id": "f4892bb5-c383-4a14-9968-6cff91551b72",
+          "template_name": "E2E MCP Template 1772095600",
+          "handoff_id": "a4667631-7b1c-467f-a4b6-fdd615c7e739",
+          "bundle_id": "89284024-2a91-43be-8a93-31baf977dd54"
         }
       }
     },
     "mcp_real": {
       "mcp_real_summary": {
-        "branch": "e2e-mcp-real-1772081384",
-        "fact_id": "5e0f59ab-44a2-453a-ba60-b0bb95759324",
-        "snapshot_id": "4c698b2c-1507-4790-8358-4bfcf43aeb00"
+        "branch": "e2e-mcp-real-1772095603",
+        "transport": "streamable_http",
+        "mcp_url": "http://127.0.0.1:8012/mcp",
+        "fact_id": "20fa05ee-85b6-4b69-8b8f-f24aa81754c1",
+        "snapshot_id": "b8f64c04-1d78-4f3b-9e43-fa6487aaa309",
+        "mcp_session_id": "2c5895443bb84d7db7f06125cdfa5c63"
       }
     }
   },

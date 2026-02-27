@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from contextlib import asynccontextmanager
 import json
 import os
 import re
@@ -19,21 +20,18 @@ import subprocess
 import sys
 import tempfile
 import time
-import uuid
-from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, get_args, get_origin
 
 import httpx
-from fastapi import APIRouter
 from fastapi.routing import APIRoute
+from mcp import ClientSession
+from mcp.client.streamable_http import streamable_http_client
 from pydantic import BaseModel
 
 from day1.api.app import app as fastapi_app
 from day1.cli.main import _build_parser
-from day1.db.engine import close_db, init_db
-from day1.mcp import mcp_server
 from day1.mcp.tools import TOOL_DEFINITIONS
 
 
@@ -147,6 +145,45 @@ def _env_with_defaults() -> dict[str, str]:
     env.setdefault("BM_RATE_LIMIT", "0")
     env.setdefault("BM_LOG_LEVEL", "CRITICAL")
     return env
+
+
+@asynccontextmanager
+async def _mcp_http_session(mcp_url: str):
+    async with httpx.AsyncClient(trust_env=False, timeout=httpx.Timeout(15.0, read=120.0)) as http_client:
+        async with streamable_http_client(mcp_url, http_client=http_client) as (
+            read_stream,
+            write_stream,
+            get_session_id,
+        ):
+            async with ClientSession(read_stream, write_stream) as session:
+                await session.initialize()
+                yield session, get_session_id
+
+
+def _mcp_parse_tool_payload(call_result: Any) -> dict[str, Any]:
+    contents = getattr(call_result, "content", None) or []
+    if not contents:
+        return {"error": "empty_mcp_tool_result", "isError": bool(getattr(call_result, "isError", False))}
+
+    first = contents[0]
+    text = getattr(first, "text", None)
+    if not isinstance(text, str):
+        return {
+            "error": "unsupported_mcp_tool_result_content",
+            "content_type": type(first).__name__,
+            "isError": bool(getattr(call_result, "isError", False)),
+        }
+
+    try:
+        payload = json.loads(text)
+    except Exception:
+        payload = {"raw_text": text}
+
+    if isinstance(payload, dict) and getattr(call_result, "isError", False):
+        payload.setdefault("mcp_protocol_error", True)
+        if "error" not in payload:
+            payload["error"] = payload.get("raw_text") or "mcp_protocol_error"
+    return payload if isinstance(payload, dict) else {"value": payload}
 
 
 def _sample_for_name(name: str) -> Any:
@@ -916,7 +953,7 @@ def run_cli_surface() -> SectionResult:
     return section
 
 
-def run_cli_real() -> SectionResult:
+def run_cli_real(base_url: str) -> SectionResult:
     section = SectionResult(name="cli_real")
     env = _env_with_defaults()
     suffix = str(int(time.time()))
@@ -932,7 +969,7 @@ def run_cli_real() -> SectionResult:
         ("snapshot_create", ["uv", "run", "day1", "snapshot", "create", "--branch", branch, "--label", "e2e-cli", "--format", "json"]),
         ("snapshot_list", ["uv", "run", "day1", "snapshot", "list", "--branch", branch, "--format", "json"]),
         ("time_travel", ["uv", "run", "day1", "time-travel", "2099-01-01T00:00:00Z", "--branch", branch, "--limit", "5", "--format", "json"]),
-        ("health", ["uv", "run", "day1", "health", "--format", "json"]),
+        ("health", ["uv", "run", "day1", "health", "--base-url", base_url, "--format", "json"]),
     ]
     manifest: dict[str, Any] = {"branch": branch, "session_id": session_id}
     for step_name, cmd in cmds:
@@ -1088,109 +1125,154 @@ def _mcp_schema_args(tool_name: str, schema: dict[str, Any], ctx: dict[str, Any]
     return args
 
 
-async def run_mcp_surface() -> SectionResult:
+async def run_mcp_surface(mcp_url: str) -> SectionResult:
     section = SectionResult(name="mcp_surface")
-    await init_db()
     ctx = {"branch": f"e2e-mcp-{int(time.time())}", "agent_id": "e2e-mcp-agent"}
+    async with _mcp_http_session(mcp_url) as (mcp, get_mcp_session_id):
+        listed = await mcp.list_tools()
+        if len(listed.tools) != len(TOOL_DEFINITIONS):
+            section.add(
+                CaseResult(
+                    name="mcp_list_tools_count",
+                    ok=False,
+                    category="fail",
+                    detail=f"listed={len(listed.tools)} expected={len(TOOL_DEFINITIONS)}",
+                )
+            )
+            return section
 
-    # Pre-create/switch one branch for downstream tool smoke.
-    await mcp_server.call_tool("memory_branch_create", {"branch_name": ctx["branch"], "parent_branch": "main", "description": "e2e mcp"})
-    await mcp_server.call_tool("memory_branch_switch", {"branch_name": ctx["branch"]})
-    # Seed one fact + one conversation message so downstream tools can use real IDs.
-    fact_seed = json.loads((await mcp_server.call_tool("memory_write_fact", {"fact_text": "e2e mcp seeded fact", "category": "testing", "branch": ctx["branch"]}))[0].text)
-    if isinstance(fact_seed, dict) and "id" in fact_seed:
-        ctx["fact_id"] = fact_seed["id"]
-    ctx["session_id"] = f"e2e-mcp-session-{int(time.time())}"
-    msg_seed = json.loads((await mcp_server.call_tool("memory_log_message", {"role": "user", "content": "seed", "session_id": ctx["session_id"]}))[0].text)
-    if isinstance(msg_seed, dict):
-        ctx["conversation_id"] = msg_seed.get("conversation_id")
-        ctx["message_id"] = msg_seed.get("id")
+        # Pre-create/switch one branch for downstream tool smoke.
+        await mcp.call_tool("memory_branch_create", {"branch_name": ctx["branch"], "parent_branch": "main", "description": "e2e mcp"})
+        await mcp.call_tool("memory_branch_switch", {"branch_name": ctx["branch"]})
+        # Seed one fact + one conversation message so downstream tools can use real IDs.
+        fact_seed = _mcp_parse_tool_payload(
+            await mcp.call_tool(
+                "memory_write_fact",
+                {"fact_text": "e2e mcp seeded fact", "category": "testing", "branch": ctx["branch"]},
+            )
+        )
+        if "id" in fact_seed:
+            ctx["fact_id"] = fact_seed["id"]
+        ctx["session_id"] = f"e2e-mcp-session-{int(time.time())}"
+        msg_seed = _mcp_parse_tool_payload(
+            await mcp.call_tool(
+                "memory_log_message",
+                {"role": "user", "content": "seed", "session_id": ctx["session_id"]},
+            )
+        )
+        if isinstance(msg_seed, dict):
+            ctx["conversation_id"] = msg_seed.get("conversation_id")
+            ctx["message_id"] = msg_seed.get("id")
 
-    for tool in TOOL_DEFINITIONS:
-        tool_name = tool.name
-        args = _mcp_schema_args(tool_name, tool.inputSchema or {}, ctx)
-        try:
-            res = await mcp_server.call_tool(tool_name, args)
-            payload = json.loads(res[0].text)
-            if isinstance(payload, dict):
-                if tool_name == "memory_task_create":
-                    if "task_id" in payload:
-                        ctx["task_id"] = payload["task_id"]
-                    elif "id" in payload:
-                        ctx["task_id"] = payload["id"]
-                if tool_name == "memory_task_join" and "agent_branch" in payload:
-                    ctx["agent_branch"] = payload["agent_branch"]
-                if tool_name == "memory_fork_conversation" and "conversation_id" in payload:
-                    ctx["fork_conversation_id"] = payload["conversation_id"]
-                if tool_name == "replay_conversation" and "replay_id" in payload:
-                    ctx["replay_id"] = payload["replay_id"]
-                if tool_name == "memory_template_create" and "name" in payload:
-                    ctx["template_name"] = payload["name"]
-                if tool_name == "memory_handoff_create" and "handoff_id" in payload:
-                    ctx["handoff_id"] = payload["handoff_id"]
-                if tool_name == "knowledge_bundle_create" and "id" in payload:
-                    ctx["bundle_id"] = payload["id"]
-            # MCP boundary smoke: any structured JSON response counts as endpoint reachable.
-            if isinstance(payload, dict) and "error" in payload:
-                err_text = str(payload["error"])
-                spec = EXPECTED_MCP_SURFACE_WARNINGS.get(tool_name)
-                if spec and all(needle in err_text for needle in spec.get("contains", [])):
-                    section.add(CaseResult(name=tool_name, ok=True, category="warn", detail=err_text[:200]))
+        for tool in listed.tools:
+            tool_name = tool.name
+            args = _mcp_schema_args(tool_name, tool.inputSchema or {}, ctx)
+            try:
+                res = await mcp.call_tool(tool_name, args)
+                payload = _mcp_parse_tool_payload(res)
+                if isinstance(payload, dict):
+                    if tool_name == "memory_task_create":
+                        if "task_id" in payload:
+                            ctx["task_id"] = payload["task_id"]
+                        elif "id" in payload:
+                            ctx["task_id"] = payload["id"]
+                    if tool_name == "memory_task_join" and "agent_branch" in payload:
+                        ctx["agent_branch"] = payload["agent_branch"]
+                    if tool_name == "memory_fork_conversation" and "conversation_id" in payload:
+                        ctx["fork_conversation_id"] = payload["conversation_id"]
+                    if tool_name == "replay_conversation" and "replay_id" in payload:
+                        ctx["replay_id"] = payload["replay_id"]
+                    if tool_name == "memory_template_create" and "name" in payload:
+                        ctx["template_name"] = payload["name"]
+                    if tool_name == "memory_handoff_create" and "handoff_id" in payload:
+                        ctx["handoff_id"] = payload["handoff_id"]
+                    if tool_name == "knowledge_bundle_create" and "id" in payload:
+                        ctx["bundle_id"] = payload["id"]
+                # MCP boundary smoke: any structured JSON response counts as endpoint reachable.
+                if isinstance(payload, dict) and "error" in payload:
+                    err_text = str(payload["error"])
+                    spec = EXPECTED_MCP_SURFACE_WARNINGS.get(tool_name)
+                    if spec and all(needle in err_text for needle in spec.get("contains", [])):
+                        section.add(CaseResult(name=tool_name, ok=True, category="warn", detail=err_text[:200]))
+                    else:
+                        section.add(CaseResult(name=tool_name, ok=False, category="fail", detail=f"unexpected_mcp_error: {err_text[:200]}"))
                 else:
-                    section.add(CaseResult(name=tool_name, ok=False, category="fail", detail=f"unexpected_mcp_error: {err_text[:200]}"))
-            else:
-                section.add(CaseResult(name=tool_name, ok=True, category="pass"))
-        except Exception as exc:
-            section.add(CaseResult(name=tool_name, ok=False, category="fail", detail=str(exc)))
+                    section.add(CaseResult(name=tool_name, ok=True, category="pass"))
+            except Exception as exc:
+                section.add(CaseResult(name=tool_name, ok=False, category="fail", detail=str(exc)))
 
-    await close_db()
-    section.add(CaseResult(name="mcp_surface_summary", ok=True, category="pass", extra={
-        "ctx": {
-            k: v for k, v in ctx.items()
-            if k in {
-                "branch", "session_id", "conversation_id", "message_id", "fork_conversation_id",
-                "fact_id", "task_id", "handoff_id", "bundle_id", "replay_id", "template_name",
-            }
-        }
-    }))
+        section.add(
+            CaseResult(
+                name="mcp_surface_summary",
+                ok=True,
+                category="pass",
+                extra={
+                    "transport": "streamable_http",
+                    "mcp_url": mcp_url,
+                    "mcp_session_id": get_mcp_session_id(),
+                    "listed_tools": len(listed.tools),
+                    "ctx": {
+                        k: v
+                        for k, v in ctx.items()
+                        if k
+                        in {
+                            "branch",
+                            "session_id",
+                            "conversation_id",
+                            "message_id",
+                            "fork_conversation_id",
+                            "fact_id",
+                            "task_id",
+                            "handoff_id",
+                            "bundle_id",
+                            "replay_id",
+                            "template_name",
+                        }
+                    },
+                },
+            )
+        )
     return section
 
 
-async def run_mcp_real() -> SectionResult:
+async def run_mcp_real(mcp_url: str) -> SectionResult:
     section = SectionResult(name="mcp_real")
-    await init_db()
     suffix = str(int(time.time()))
     branch = f"e2e-mcp-real-{suffix}"
-    manifest: dict[str, Any] = {"branch": branch}
+    manifest: dict[str, Any] = {"branch": branch, "transport": "streamable_http", "mcp_url": mcp_url}
     try:
-        def parse_first(res: Any) -> dict[str, Any]:
-            return json.loads(res[0].text)
-
-        for name, args in [
-            ("memory_branch_create", {"branch_name": branch, "parent_branch": "main", "description": "e2e mcp real"}),
-            ("memory_branch_switch", {"branch_name": branch}),
-            ("memory_write_fact", {"fact_text": "E2E MCP scenario fact", "category": "integration"}),
-            ("memory_write_observation", {"observation_type": "tool_use", "summary": "E2E MCP observation", "tool_name": "mcp", "session_id": f"mcp-{suffix}"}),
-            ("memory_write_relation", {"source_entity": "E2E", "target_entity": "MCP", "relation_type": "tests"}),
-            ("memory_search", {"query": "E2E MCP scenario", "search_type": "keyword", "branch": branch, "limit": 5}),
-            ("memory_graph_query", {"entity": "E2E", "branch": branch, "depth": 1}),
-            ("memory_snapshot", {"branch": branch, "label": "e2e-mcp"}),
-            ("memory_snapshot_list", {"branch": branch}),
-            ("memory_time_travel", {"branch": branch, "timestamp": "2099-01-01T00:00:00Z"}),
-        ]:
-            payload = parse_first(await mcp_server.call_tool(name, args))
-            if "error" in payload:
-                raise RuntimeError(f"{name}: {payload['error']}")
-            if name == "memory_write_fact":
-                manifest["fact_id"] = payload.get("id")
-            elif name == "memory_snapshot":
-                manifest["snapshot_id"] = payload.get("snapshot_id")
-            section.add(CaseResult(name=name, ok=True, category="pass"))
-        section.add(CaseResult(name="mcp_real_summary", ok=True, category="pass", extra=manifest))
+        async with _mcp_http_session(mcp_url) as (mcp, get_mcp_session_id):
+            for name, args in [
+                ("memory_branch_create", {"branch_name": branch, "parent_branch": "main", "description": "e2e mcp real"}),
+                ("memory_branch_switch", {"branch_name": branch}),
+                ("memory_write_fact", {"fact_text": "E2E MCP scenario fact", "category": "integration"}),
+                ("memory_write_observation", {"observation_type": "tool_use", "summary": "E2E MCP observation", "tool_name": "mcp", "session_id": f"mcp-{suffix}"}),
+                ("memory_write_relation", {"source_entity": "E2E", "target_entity": "MCP", "relation_type": "tests"}),
+                ("memory_search", {"query": "E2E MCP scenario", "search_type": "keyword", "branch": branch, "limit": 5}),
+                ("memory_graph_query", {"entity": "E2E", "branch": branch, "depth": 1}),
+                ("memory_snapshot", {"branch": branch, "label": "e2e-mcp"}),
+                ("memory_snapshot_list", {"branch": branch}),
+                (
+                    "memory_time_travel",
+                    {
+                        "branch": branch,
+                        "timestamp": "2099-01-01T00:00:00Z",
+                        "query": "E2E MCP",
+                    },
+                ),
+            ]:
+                payload = _mcp_parse_tool_payload(await mcp.call_tool(name, args))
+                if "error" in payload:
+                    raise RuntimeError(f"{name}: {payload['error']}")
+                if name == "memory_write_fact":
+                    manifest["fact_id"] = payload.get("id")
+                elif name == "memory_snapshot":
+                    manifest["snapshot_id"] = payload.get("snapshot_id")
+                section.add(CaseResult(name=name, ok=True, category="pass"))
+            manifest["mcp_session_id"] = get_mcp_session_id()
+            section.add(CaseResult(name="mcp_real_summary", ok=True, category="pass", extra=manifest))
     except Exception as exc:
         section.add(CaseResult(name="mcp_real_chain", ok=False, category="fail", detail=str(exc)))
-    finally:
-        await close_db()
     return section
 
 
@@ -1254,15 +1336,21 @@ def main() -> int:
     env = _env_with_defaults()
     base_url = f"http://{args.host}:{args.port}"
 
-    report: dict[str, Any] = {"generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "base_url": base_url}
+    mcp_url = f"{base_url}/mcp"
+    report: dict[str, Any] = {
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "base_url": base_url,
+        "mcp_url": mcp_url,
+        "mcp_transport": "streamable_http",
+    }
     api_proc, api_log = _start_api(env, args.host, args.port)
     try:
         _wait_health(base_url)
         api_real = run_api_real_scenario(base_url)
         api_agent_real = run_api_agent_real_scenario(base_url)
-        cli_real = run_cli_real()
-        mcp_surface = asyncio.run(run_mcp_surface())
-        mcp_real = asyncio.run(run_mcp_real())
+        cli_real = run_cli_real(base_url)
+        mcp_surface = asyncio.run(run_mcp_surface(mcp_url))
+        mcp_real = asyncio.run(run_mcp_real(mcp_url))
         sections: list[SectionResult] = []
         if not args.real_only:
             sections.append(run_api_surface(base_url))

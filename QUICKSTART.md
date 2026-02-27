@@ -36,6 +36,12 @@ docker compose up -d
 docker compose ps
 ```
 
+如未配置真实 embedding/LLM 凭据，建议在 `.env` 中设置：
+
+```bash
+BM_EMBEDDING_PROVIDER=mock
+```
+
 ### 访问
 
 | 服务 | 地址 | 说明 |
@@ -59,7 +65,7 @@ curl -s http://127.0.0.1:9903/health
 - API: `http://<HOST_IP>:9903`
 - API Docs: `http://<HOST_IP>:9903/docs`
 
-说明：MCP 当前使用 `stdio` 传输，不是 HTTP 服务，因此不会暴露单独端口。
+MCP（HTTP）: `http://<HOST_IP>:9903/mcp`
 
 ### 停止
 
@@ -169,57 +175,42 @@ bash scripts/start.sh dashboard
 
 ---
 
-## MCP 使用
+## MCP 使用（HTTP `/mcp`）
 
 ### Docker Compose 环境
 
-在 Docker 的 `api` 容器中直接启动 MCP（stdio）：
+MCP 已挂载在 API 服务内（HTTP `streamable_http`）：
+
+- Endpoint: `http://localhost:9903/mcp`
+- 远程 Client: `http://<HOST_IP>:9903/mcp`
+
+在 Claude Code 中配置（推荐用命令行）：
 
 ```bash
-docker compose exec -T api python -m day1.mcp.mcp_server
+claude mcp add --scope project --transport http day1 http://127.0.0.1:9903/mcp
+claude mcp get day1
+claude mcp list
 ```
 
-远程客户端（Claude Code / dotfiles）推荐通过 SSH 在 Host 上执行：
+如需在客户端机器（远程）接入 Host：
 
-```json
-{
-  "mcpServers": {
-    "day1": {
-      "command": "ssh",
-      "args": [
-        "user@HOST",
-        "cd /home/momo/src/day1 && docker compose exec -T api python -m day1.mcp.mcp_server"
-      ]
-    }
-  }
-}
-```
-
-说明：
-
-- `-T` 很重要（关闭 TTY，更适合 MCP stdio）
-- 需要先确保 `docker compose up -d` 已启动 `api` 容器
-
-在 Claude Code 中配置（`.claude/settings.json`）：
-
-```json
-{
-  "mcpServers": {
-    "day1": {
-      "command": "docker",
-      "args": [
-        "compose", "exec", "-T", "api",
-        "uv", "run", "python", "-m", "day1.mcp.mcp_server"
-      ]
-    }
-  }
-}
+```bash
+claude mcp add --transport http day1 http://<HOST_IP>:9903/mcp
 ```
 
 ### 本地开发环境
 
+先启动 API（MCP 已包含在内）：
+
 ```bash
-uv run python -m day1.mcp.mcp_server
+uv run uvicorn day1.api.app:app --host 127.0.0.1 --port 8000 --reload
+```
+
+然后配置 Claude Code：
+
+```bash
+claude mcp add --scope project --transport http day1 http://127.0.0.1:8000/mcp
+claude mcp get day1
 ```
 
 在 Claude Code 中验证：输入 `/mcp` 应该看到 `day1` 服务器和 50+ 工具。
@@ -315,7 +306,7 @@ day1 time-travel 2099-01-01T00:00:00Z
 |------|----------|
 | DB 无法连接 | 运行 `uv run scripts/check_db.py` |
 | API 健康检查失败 | 确保 uvicorn 正在运行 |
-| MCP 客户端看不到工具 | 用 `uv run python -m day1.mcp.mcp_server` 启动 |
+| MCP 客户端看不到工具 | 确认 API 正在运行，并检查 `http://127.0.0.1:8000/mcp`（或 Docker 的 `:9903/mcp`）以及 `claude mcp get day1` |
 | Dashboard 构建失败 | 运行 `npm --prefix dashboard install` |
 
 ---

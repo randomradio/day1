@@ -5,6 +5,7 @@
 - DB manifest: `docs/e2e_real_acceptance_db_manifest.json`
 - Totals: `{'total': 180, 'passed': 180, 'warnings': 0, 'failed': 0}`
 - API valid-input route coverage: `96/96` (all covered = `True`)
+- MCP transport for this acceptance run: HTTP `streamable_http` via `/mcp` (not `stdio`)
 
 ## Latest Run Key Data (for DB verification)
 
@@ -38,4 +39,5 @@ SELECT branch_name, parent_branch, status FROM branch_registry WHERE branch_name
 ## Notes
 
 - `negative surface` (e.g. `Field required`, `not found`) remains a separate contract-safety test and is **not** used as the real acceptance pass criterion.
+- This real acceptance run also validates MCP via HTTP `streamable_http` (`/mcp`) using the official MCP client, not direct in-process tool calls.
 - The temporary cherry branch may be archived/deleted by the scenario; verify final state in `branch_registry`.

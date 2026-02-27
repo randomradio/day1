@@ -11,7 +11,7 @@ from sqlalchemy import select, text, update
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
-from day1.core.exceptions import BranchExistsError, BranchNotFoundError
+from day1.core.exceptions import BranchCreationError, BranchExistsError, BranchNotFoundError
 from day1.db.models import BranchRegistry
 
 logger = logging.getLogger(__name__)
@@ -122,32 +122,35 @@ class BranchManager:
         if parent.scalar_one_or_none() is None:
             raise BranchNotFoundError(f"Parent branch '{parent_branch}' not found")
 
-        async with self._write_guard("create_branch"):
-            # Flush and commit ORM work before DATA BRANCH operations
-            await self._session.flush()
+        try:
+            async with self._write_guard("create_branch"):
+                # Flush and commit ORM work before DATA BRANCH operations
+                await self._session.flush()
 
-            # MO native: zero-copy branch per table (requires autocommit)
-            # Use session's connection to avoid event loop conflicts
-            branch_tables = tables if tables is not None else BRANCH_TABLES
-            async with self._get_autocommit_conn() as ac:
-                for table in branch_tables:
-                    parent_tbl = _branch_table(table, parent_branch)
-                    branch_tbl = _branch_table(table, branch_name)
-                    await ac.execute(
-                        text(
-                            f"DATA BRANCH CREATE TABLE `{branch_tbl}` FROM `{parent_tbl}`"
+                # MO native: zero-copy branch per table (requires autocommit)
+                # Use session's connection to avoid event loop conflicts
+                branch_tables = tables if tables is not None else BRANCH_TABLES
+                async with self._get_autocommit_conn() as ac:
+                    for table in branch_tables:
+                        parent_tbl = _branch_table(table, parent_branch)
+                        branch_tbl = _branch_table(table, branch_name)
+                        await ac.execute(
+                            text(
+                                f"DATA BRANCH CREATE TABLE `{branch_tbl}` FROM `{parent_tbl}`"
+                            )
                         )
-                    )
 
-            # Register the branch
-            registry = BranchRegistry(
-                branch_name=branch_name,
-                parent_branch=parent_branch,
-                description=description,
-                status="active",
-            )
-            self._session.add(registry)
-            await self._session.commit()
+                # Register the branch
+                registry = BranchRegistry(
+                    branch_name=branch_name,
+                    parent_branch=parent_branch,
+                    description=description,
+                    status="active",
+                )
+                self._session.add(registry)
+                await self._session.commit()
+        except Exception as e:
+            raise BranchCreationError(f"Failed to create branch '{branch_name}': {e}") from e
         await self._session.refresh(registry)
         return registry
 
@@ -264,11 +267,29 @@ class BranchManager:
                 logger.debug(
                     "OUTPUT COUNT failed for %s, falling back to row count", table
                 )
-                async with self._get_autocommit_conn() as ac:
-                    result = await ac.execute(
-                        text(f"DATA BRANCH DIFF `{src}` AGAINST `{tgt}`")
+                last_err: Exception | None = None
+                for attempt in range(2):
+                    try:
+                        async with self._get_autocommit_conn() as ac:
+                            result = await ac.execute(
+                                text(f"DATA BRANCH DIFF `{src}` AGAINST `{tgt}`")
+                            )
+                            counts[table] = len(result.fetchall())
+                        break
+                    except OperationalError as e:
+                        last_err = e
+                        if attempt == 0:
+                            logger.debug(
+                                "DIFF row-count fallback lost connection for %s, retrying",
+                                table,
+                            )
+                else:
+                    logger.warning(
+                        "DIFF row-count fallback failed for %s after retry: %s",
+                        table,
+                        last_err,
                     )
-                    counts[table] = len(result.fetchall())
+                    counts[table] = 0
         return counts
 
     async def merge_branch_native(

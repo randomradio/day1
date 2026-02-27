@@ -615,9 +615,9 @@ tool("knowledge_bundle_list", {
 
 ## Implementation File
 
-- **Definition & Handlers**: `src/day1/mcp/tools.py` (42 tools)
-- **MCP Server**: `src/day1/mcp/mcp_server.py` (stdio mode)
-- **MCP HTTP Server**: `src/day1/mcp/mcp_server_http.py` (SSE mode)
+- **Definition & Handlers**: `src/day1/mcp/tools.py` (52 tools)
+- **MCP Server (HTTP `streamable_http`)**: `src/day1/mcp/mcp_server.py`
+- **FastAPI Mount Point**: `src/day1/api/app.py` (`/mcp`, `/mcp/`)
 - **Handler pattern**: Each tool = async function dispatched via `handle_tool_call()`
 
 ## CLI / SDK / OTEL Mapping Notes (Day1 MVP)

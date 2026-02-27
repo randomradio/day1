@@ -1,7 +1,7 @@
 # Day1 CLI 工具设计
 
 **Date**: 2026-02-25
-**Idea**: 将 MCP 工具暴露为 CLI 命令,无需运行服务端
+**Idea**: 将 MCP 工具暴露为 CLI 命令,无需额外运行独立服务端（当前 MCP 已迁移为 HTTP `/mcp`）
 
 ---
 
@@ -400,10 +400,10 @@ day1 --help
 
 ### 2.4 与 MCP 对比
 
-| 操作 | MCP (服务端模式) | CLI (直接调用) |
+| 操作 | MCP (HTTP 模式) | CLI (直接调用) |
 |------|------------------|----------------|
-| 启动 | 需要 `python -m day1.mcp.mcp_server` | 无需启动 |
-| 调用 | JSON-RPC over stdio | 直接 subprocess |
+| 启动 | 需要启动 API（暴露 `/mcp`） | 无需启动 |
+| 调用 | HTTP MCP (`streamable_http`) | 直接 subprocess |
 | 配置 | `.claude/settings.json` | 环境变量或参数 |
 | 调试 | 需要查看服务端日志 | 直接看输出 |
 | 依赖 | 需要 MCP 客户端 SDK | 任何能调用进程的语言 |
@@ -459,11 +459,17 @@ day1 --help
   "mcpServers": {
     // 保留 MCP 用于需要状态管理的场景
     "day1": {
-      "command": "python",
-      "args": ["-m", "day1.mcp.mcp_server"]
+      "transport": "http",
+      "url": "http://127.0.0.1:8000/mcp"
     }
   }
 }
+```
+
+或使用 Claude Code CLI（推荐，避免手写配置格式差异）：
+
+```bash
+claude mcp add --scope project --transport http day1 http://127.0.0.1:8000/mcp
 ```
 
 ---

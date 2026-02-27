@@ -1,13 +1,8 @@
 {
   "mcpServers": {
     "day1": {
-      "command": "/Users/randomradio/src/day1/.venv/bin/python",
-      "args": ["-m", "day1.mcp.mcp_server"],
-      "cwd": "/Users/randomradio/src/day1",
-      "env": {
-        "BM_DATABASE_URL": "mysql+aiomysql://root:111@localhost:6001/mo_catalog",
-        "PYTHONPATH": "/Users/randomradio/src/day1/src"
-      }
+      "type": "http",
+      "url": "http://127.0.0.1:9903/mcp"
     }
   }
 }

@@ -19,7 +19,7 @@
 
 - `API` surface coverage: enumerate all FastAPI route/method pairs and smoke each one with synthetic inputs.
 - `CLI` surface coverage: enumerate all CLI leaf commands and run command/help smoke.
-- `MCP` surface coverage: enumerate all MCP tools and invoke each tool through MCP dispatch with schema-derived inputs (plus seeded real IDs for downstream tools).
+- `MCP` surface coverage: enumerate all MCP tools and invoke each tool through **HTTP MCP (`streamable_http`)** with schema-derived inputs (plus seeded real IDs for downstream tools).
 - Real scenarios: API core chain, API deep agent dialogue/task chain, CLI real chain, MCP real chain.
 
 ## Entry Points
@@ -45,6 +45,8 @@ export BM_EMBEDDING_PROVIDER=mock BM_RATE_LIMIT=0 BM_LOG_LEVEL=CRITICAL
 uv run python scripts/e2e_surface.py --output docs/e2e_surface_latest_report.json
 ```
 
+The runner starts a local API instance and tests MCP via HTTP (`/mcp`) using the official Python MCP client (no direct in-process dispatch fallback).
+
 ## Result Classification
 
 - `pass`: endpoint/tool returned success for the smoke input or real scenario step.
@@ -53,20 +55,22 @@ uv run python scripts/e2e_surface.py --output docs/e2e_surface_latest_report.jso
 
 ## Latest Preserved Run
 
-- Generated at: `2026-02-26T04:49:05Z`
-- Base URL: `http://127.0.0.1:8000`
-- API log artifact: `/tmp/day1-e2e-api-1v6o9si9.log`
+- Generated at: `2026-02-26T08:46:09Z`
+- Base URL: `http://127.0.0.1:8012`
+- MCP transport: `streamable_http`
+- MCP URL: `http://127.0.0.1:8012/mcp`
+- API log artifact: `/tmp/day1-e2e-api-yo58m35x.log`
 
 | Section | Total | Pass | Warn | Fail |
 |---|---:|---:|---:|---:|
 | `api_surface` | 96 | 38 | 58 | 0 |
 | `api_real` | 2 | 2 | 0 | 0 |
 | `api_agent_real` | 103 | 103 | 0 | 0 |
-| `cli_surface` | 15 | 15 | 0 | 0 |
+| `cli_surface` | 29 | 29 | 0 | 0 |
 | `cli_real` | 11 | 11 | 0 | 0 |
 | `mcp_surface` | 53 | 53 | 0 | 0 |
 | `mcp_real` | 11 | 11 | 0 | 0 |
-| `totals` | 291 | 233 | 58 | 0 |
+| `totals` | 305 | 247 | 58 | 0 |
 
 ## API Warn Explanations (All, Strict-Baselined)
 
@@ -141,6 +145,7 @@ All API warns below are expected **only** because they match the strict surface 
 
 - `surface` mode proves every endpoint/tool is reachable and safely handles invalid/synthetic inputs without server-side failure.
 - `real` mode proves end-to-end business flows work with valid data (API core chain, API deep agent scenario, CLI chain, MCP chain).
+- `MCP surface` / `MCP real` now run over HTTP MCP (`streamable_http`, `/mcp`) and are not allowed to silently fall back to direct Python dispatch or `stdio`.
 - `negative surface` (`field missing`, `not found`, etc.) is **not** the real acceptance pass criterion. Use `docs/E2E_REAL_ACCEPTANCE.md` and `docs/e2e_real_acceptance_latest.json` for release-style validation.
 - Both are required; neither replaces the other.
 

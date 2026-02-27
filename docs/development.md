@@ -76,11 +76,9 @@ uv run uvicorn day1.api.app:app --reload --port 8000
 # FastAPI with debug
 uv run uvicorn day1.api.app:app --reload --port 8000 --log-level debug
 
-# MCP server (stdio mode) - for Claude Code integration
-uv run python -m day1.mcp.mcp_server
-
-# MCP server (SSE mode) - for testing/debug
-uv run uvicorn day1.mcp.mcp_server_http:app --reload --port 3001
+# MCP HTTP endpoint (mounted in FastAPI app)
+# Start the API, then connect clients to http://127.0.0.1:8000/mcp
+uv run uvicorn day1.api.app:app --reload --port 8000
 ```
 
 ## Dashboard (Frontend)

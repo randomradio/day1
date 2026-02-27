@@ -26,6 +26,7 @@ from day1.api.routes import (
     conversations,
     facts,
     handoffs,
+    ingest,
     messages,
     observations,
     relations,
@@ -39,6 +40,7 @@ from day1.api.routes import (
     verification,
 )
 from day1.db.engine import close_db, init_db
+from day1.mcp import mcp_server
 
 
 @asynccontextmanager
@@ -58,9 +60,14 @@ async def lifespan(app: FastAPI):
     finally:
         await session_gen.aclose()
     logger.info("Day1 API ready — %d routes loaded", len(app.routes))
+    mcp_http_manager = mcp_server.create_http_session_manager()
+    mcp_server.set_http_session_manager(mcp_http_manager)
     try:
-        yield
+        async with mcp_http_manager.run():
+            yield
     finally:
+        mcp_server.set_http_session_manager(None)
+        mcp_server.reset_mcp_http_state()
         await close_db()
 
 
@@ -70,6 +77,15 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# MCP over HTTP (single supported transport). Register both paths to avoid 307 redirects.
+for _mcp_path in ("/mcp", "/mcp/"):
+    app.add_route(
+        _mcp_path,
+        mcp_server.mcp_http_asgi_app,
+        methods=["GET", "POST", "DELETE"],
+        include_in_schema=False,
+    )
 
 
 # ── CORS ──────────────────────────────────────────────────────────
@@ -89,7 +105,7 @@ _rate_buckets: dict[str, list[float]] = defaultdict(list)
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
     """Simple sliding-window rate limiter.  Disabled when rate_limit=0."""
-    if settings.rate_limit <= 0 or request.url.path == "/health":
+    if settings.rate_limit <= 0 or request.url.path == "/health" or request.url.path.startswith("/mcp"):
         return await call_next(request)
 
     client_ip = request.client.host if request.client else "unknown"
@@ -133,6 +149,7 @@ _auth = [Depends(verify_api_key)]
 # Search and message-search routes must come before parameterized routes
 app.include_router(search.router, prefix="/api/v1", tags=["search"], dependencies=_auth)
 app.include_router(messages.router, prefix="/api/v1", tags=["messages"], dependencies=_auth)
+app.include_router(ingest.router, prefix="/api/v1", tags=["ingest"], dependencies=_auth)
 app.include_router(conversations.router, prefix="/api/v1", tags=["conversations"], dependencies=_auth)
 app.include_router(tasks.router, prefix="/api/v1", tags=["tasks"], dependencies=_auth)
 app.include_router(facts.router, prefix="/api/v1", tags=["facts"], dependencies=_auth)

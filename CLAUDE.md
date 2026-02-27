@@ -21,6 +21,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Embedding | OpenAI text-embedding-3-small |
 | Frontend | React + Vite + React Flow + D3.js + Zustand + Tailwind CSS |
 
+## MCP Transport (Current)
+
+- MCP is exposed as HTTP `streamable_http` at FastAPI route `/mcp` (single supported MCP transport).
+- Do not document or rely on `stdio` MCP startup for this repo's current runtime path.
+
 ## Core Data Model
 
 ```
@@ -158,6 +163,7 @@ Use memory_snapshot with label describing the change
 - API / CLI / MCP E2E checks must be executed strictly (no manual skipping of endpoints/tools).
 - Use `scripts/e2e_surface.py` for dynamic surface enumeration plus real-chain validation.
 - `scripts/e2e_surface.py` must run the deep API real-agent scenario (`api_agent_real`) in addition to API/CLI/MCP basic real chains.
+- MCP E2E (`mcp_surface` / `mcp_real`) must run through HTTP MCP (`/mcp`, `streamable_http`) and must not fall back to direct dispatch or `stdio`.
 - Release-style acceptance should use `scripts/e2e_surface.py --real-only` and preserve `docs/e2e_real_acceptance_latest.json` plus DB manifest artifacts.
 - Preserve the latest machine-readable report in `docs/e2e_surface_latest_report.json`.
 - Surface `warn` is allowed only when it matches the explicit strict baseline in `scripts/e2e_surface.py`; otherwise treat it as `fail`.

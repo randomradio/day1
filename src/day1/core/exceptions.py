@@ -17,6 +17,10 @@ class BranchExistsError(Day1Error):
     """Branch with this name already exists."""
 
 
+class BranchCreationError(Day1Error, RuntimeError):
+    """Branch creation failed after validation (write/commit/native op failure)."""
+
+
 class FactNotFoundError(Day1Error):
     """Requested fact does not exist."""
 
