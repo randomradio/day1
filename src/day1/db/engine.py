@@ -88,11 +88,9 @@ async def init_db() -> None:
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-        # Create FULLTEXT indexes (MatrixOne doesn't support IF NOT EXISTS in this position)
+        # Create FULLTEXT index on memories table (MATCH AGAINST for hybrid search)
         fulltext_stmts = [
-            "CREATE FULLTEXT INDEX ft_facts ON facts(fact_text, category)",
-            "CREATE FULLTEXT INDEX ft_obs ON observations(summary, tool_name)",
-            "CREATE FULLTEXT INDEX ft_messages ON messages(content, role)",
+            "CREATE FULLTEXT INDEX ft_memories ON memories(text, context)",
         ]
         for stmt in fulltext_stmts:
             try:
