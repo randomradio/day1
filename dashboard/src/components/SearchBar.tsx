@@ -1,37 +1,61 @@
 import { useState } from 'react';
-import { useBranchStore } from '../stores/branchStore';
-import { useVisiblePolling } from '../hooks/usePolling';
+import { useStore } from '../stores/store';
+
+const CATEGORIES = ['', 'pattern', 'decision', 'bug_fix', 'session', 'conversation', 'architecture'];
 
 export default function SearchBar() {
-  const { searchFacts, searchQuery, refreshFacts, setSearchQuery, activeBranch, loading, pollingEnabled } =
-    useBranchStore();
-  const [input, setInput] = useState(searchQuery);
+  const { search, clearSearch, searchQuery, loading } = useStore();
+  const [query, setQuery] = useState('');
+  const [category, setCategory] = useState('');
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSearchQuery(input);
-    searchFacts(input);
+  const handleSearch = () => {
+    const q = query.trim();
+    if (!q) {
+      clearSearch();
+      return;
+    }
+    search(q, category || undefined);
   };
 
-  // Poll search results every 10 seconds (slower than conversations since searches are more expensive)
-  useVisiblePolling(refreshFacts, 10000, pollingEnabled && searchQuery !== '');
-
   return (
-    <form onSubmit={handleSearch} className="flex items-center gap-2">
+    <div className="flex gap-2">
       <input
-        type="text"
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        placeholder={`Search facts on ${activeBranch}...`}
-        className="flex-1 bg-white text-gray-900 px-3 py-2 rounded-lg border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none text-sm shadow-sm"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+        placeholder="Search memories..."
+        className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
       />
-      <button
-        type="submit"
-        disabled={loading}
-        className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm disabled:opacity-50 shadow-sm"
+      <select
+        value={category}
+        onChange={(e) => setCategory(e.target.value)}
+        className="border border-gray-300 rounded-lg px-2 py-2 text-sm bg-white"
       >
-        {loading ? '...' : 'Search'}
+        <option value="">All categories</option>
+        {CATEGORIES.filter(Boolean).map((c) => (
+          <option key={c} value={c}>
+            {c}
+          </option>
+        ))}
+      </select>
+      <button
+        onClick={handleSearch}
+        disabled={loading}
+        className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
+      >
+        Search
       </button>
-    </form>
+      {searchQuery && (
+        <button
+          onClick={() => {
+            setQuery('');
+            clearSearch();
+          }}
+          className="text-sm text-gray-500 hover:text-gray-700 px-2"
+        >
+          Clear
+        </button>
+      )}
+    </div>
   );
 }

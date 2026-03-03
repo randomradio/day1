@@ -1,562 +1,110 @@
-import type {
-  AnalyticsOverview,
-  AutoArchiveResult,
-  BatchVerifyResult,
-  BranchListResponse,
-  BranchNameValidation,
-  BranchStats,
-  BranchTopologyNode,
-  BundleImportResult,
-  CherryPickRequest,
-  CherryPickResult,
-  Conversation,
-  ConversationDiff,
-  ConversationListResponse,
-  CuratedBranchRequest,
-  CuratedBranchResult,
-  DiffResponse,
-  Fact,
-  FactRelatedResponse,
-  HandoffPacket,
-  HandoffRecord,
-  KnowledgeGraphResponse,
-  KnowledgeBundle,
-  MergeGateResult,
-  MergeResult,
-  Message,
-  MessageListResponse,
-  MessageSearchResult,
-  ReplayListResponse,
-  ReplayResult,
-  ScoreEntry,
-  ScoreSummary,
-  SearchResult,
-  SemanticDiff,
-  Snapshot,
-  TTLExpiredBranch,
-  TemplateBranch,
-  TemplateInstantiateResult,
-  TemplateListResponse,
-  TrendData,
-  VerificationResult,
-  VerificationSummary,
-} from '../types/schema';
+import type { Memory, Branch, Snapshot } from '../types/schema';
 
-const API = '/api/v1';
-
-// Read API key from query param ?key= or localStorage
-function getApiKey(): string | null {
-  const params = new URLSearchParams(window.location.search);
-  const key = params.get('key') || localStorage.getItem('day1_api_key');
-  if (key) localStorage.setItem('day1_api_key', key);
-  return key;
-}
+const BASE = '/api/v1';
 
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
-  const headers = new Headers(init?.headers);
-  const apiKey = getApiKey();
-  if (apiKey) headers.set('Authorization', `Bearer ${apiKey}`);
-
-  const resp = await fetch(url, { ...init, headers });
-  if (!resp.ok) {
-    const body = await resp.text();
-    throw new Error(`${resp.status}: ${body}`);
-  }
-  return resp.json();
+  const res = await fetch(url, {
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...init?.headers },
+  });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json();
 }
 
-export const api = {
-  // Branches
-  listBranches: () =>
-    fetchJSON<BranchListResponse>(`${API}/branches`),
-
-  createBranch: (name: string, parent = 'main', description?: string) =>
-    fetchJSON(`${API}/branches`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        branch_name: name,
-        parent_branch: parent,
-        description,
-      }),
-    }),
-
-  archiveBranch: (name: string) =>
-    fetchJSON(`${API}/branches/${name}`, { method: 'DELETE' }),
-
-  // Diff
-  diffNative: (source: string, target = 'main') =>
-    fetchJSON<DiffResponse>(
-      `${API}/branches/${source}/diff/native?target_branch=${target}`
-    ),
-
-  diffNativeCount: (source: string, target = 'main') =>
-    fetchJSON<{ counts: Record<string, number> }>(
-      `${API}/branches/${source}/diff/native/count?target_branch=${target}`
-    ),
-
-  // Merge
-  mergeBranch: (
-    source: string,
-    target: string,
-    strategy: string,
-    conflict = 'skip'
-  ) =>
-    fetchJSON<MergeResult>(`${API}/branches/${source}/merge`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        target_branch: target,
-        strategy,
-        conflict,
-      }),
-    }),
-
-  // Facts / Search
-  searchFacts: (query: string, branch = 'main', searchType = 'hybrid') =>
-    fetchJSON<SearchResult>(
-      `${API}/facts/search?query=${encodeURIComponent(query)}&branch=${branch}&search_type=${searchType}`
-    ),
-
-  getFact: (id: string) => fetchJSON<Fact>(`${API}/facts/${id}`),
-
-  getFactRelated: (id: string, branch?: string, limit = 25) => {
-    const qs = new URLSearchParams({ limit: String(limit) });
-    if (branch) qs.set('branch', branch);
-    return fetchJSON<FactRelatedResponse>(`${API}/facts/${id}/related?${qs}`);
-  },
-
-  // Observations
-  searchObservations: (query: string, branch = 'main') =>
-    fetchJSON<{ results: unknown[]; count: number }>(
-      `${API}/observations/search?query=${encodeURIComponent(query)}&branch=${branch}`
-    ),
-
-  // Snapshots
-  listSnapshots: (branch?: string) =>
-    fetchJSON<{ snapshots: Snapshot[] }>(
-      `${API}/snapshots${branch ? `?branch=${branch}` : ''}`
-    ),
-
-  createSnapshot: (label?: string, branch = 'main', native = false) =>
-    fetchJSON(`${API}/snapshots`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ label, branch, native }),
-    }),
-
-  // Time travel
-  timeTravel: (timestamp: string, branch = 'main', category?: string) =>
-    fetchJSON<{ timestamp: string; results: Fact[] }>(
-      `${API}/time-travel?timestamp=${encodeURIComponent(timestamp)}&branch=${branch}${category ? `&category=${category}` : ''}`
-    ),
-
-  // Conversations
-  listConversations: (params?: {
-    session_id?: string;
-    agent_id?: string;
-    task_id?: string;
-    branch?: string;
-    status?: string;
-    limit?: number;
-  }) => {
-    const qs = new URLSearchParams();
-    if (params?.session_id) qs.set('session_id', params.session_id);
-    if (params?.agent_id) qs.set('agent_id', params.agent_id);
-    if (params?.task_id) qs.set('task_id', params.task_id);
-    if (params?.branch) qs.set('branch', params.branch);
-    if (params?.status) qs.set('status', params.status);
-    if (params?.limit) qs.set('limit', String(params.limit));
-    const q = qs.toString();
-    return fetchJSON<ConversationListResponse>(
-      `${API}/conversations${q ? `?${q}` : ''}`
-    );
-  },
-
-  getConversation: (id: string) =>
-    fetchJSON<Conversation>(`${API}/conversations/${id}`),
-
-  createConversation: (data: {
-    session_id?: string;
-    title?: string;
-    branch?: string;
-  }) =>
-    fetchJSON<Conversation>(`${API}/conversations`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    }),
-
-  forkConversation: (id: string, messageId: string, title?: string, branch?: string) =>
-    fetchJSON<Conversation>(`${API}/conversations/${id}/fork`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message_id: messageId, title, branch }),
-    }),
-
-  cherryPickConversation: (id: string, data: CherryPickRequest) =>
-    fetchJSON<CherryPickResult>(`${API}/conversations/${id}/cherry-pick`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    }),
-
-  createCuratedBranch: (data: CuratedBranchRequest) =>
-    fetchJSON<CuratedBranchResult>(`${API}/branches/curated`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    }),
-
-  diffConversations: (a: string, b: string) =>
-    fetchJSON<ConversationDiff>(`${API}/conversations/${a}/diff/${b}`),
-
-  // Messages
-  listMessages: (conversationId: string, limit = 100, offset = 0) =>
-    fetchJSON<MessageListResponse>(
-      `${API}/conversations/${conversationId}/messages?limit=${limit}&offset=${offset}`
-    ),
-
-  addMessage: (conversationId: string, data: {
-    role: string;
-    content?: string;
-    thinking?: string;
-    tool_calls?: Array<{ name: string; input?: string; output?: string }>;
-    session_id?: string;
-    branch?: string;
-  }) =>
-    fetchJSON<Message>(`${API}/conversations/${conversationId}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...data, conversation_id: conversationId }),
-    }),
-
-  searchMessages: (query: string, branch = 'main', conversationId?: string) =>
-    fetchJSON<{ results: MessageSearchResult[]; count: number }>(
-      `${API}/messages/search?query=${encodeURIComponent(query)}&branch=${branch}${conversationId ? `&conversation_id=${conversationId}` : ''}`
-    ),
-
-  // Semantic Diff
-  semanticDiff: (a: string, b: string) =>
-    fetchJSON<SemanticDiff>(`${API}/conversations/${a}/semantic-diff/${b}`),
-
-  // Replays
-  startReplay: (conversationId: string, data: {
-    from_message_id: string;
-    system_prompt?: string;
-    model?: string;
-    temperature?: number;
-    max_tokens?: number;
-    tool_filter?: string[];
-    extra_context?: string;
-    branch?: string;
-    title?: string;
-  }) =>
-    fetchJSON<ReplayResult>(`${API}/conversations/${conversationId}/replay`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    }),
-
-  getReplayContext: (replayId: string) =>
-    fetchJSON<{ conversation_id: string; messages: Array<{ role: string; content: string }>; model?: string }>(
-      `${API}/replays/${replayId}/context`
-    ),
-
-  replayDiff: (replayId: string) =>
-    fetchJSON<ConversationDiff>(`${API}/replays/${replayId}/diff`),
-
-  replaySemanticDiff: (replayId: string) =>
-    fetchJSON<SemanticDiff>(`${API}/replays/${replayId}/semantic-diff`),
-
-  completeReplay: (replayId: string) =>
-    fetchJSON(`${API}/replays/${replayId}/complete`, { method: 'POST' }),
-
-  listReplays: (conversationId?: string, limit = 20) => {
-    const qs = new URLSearchParams();
-    if (conversationId) qs.set('conversation_id', conversationId);
-    qs.set('limit', String(limit));
-    return fetchJSON<ReplayListResponse>(`${API}/replays?${qs}`);
-  },
-
-  // Analytics
-  analyticsOverview: (branch?: string, days = 30) => {
-    const qs = new URLSearchParams();
-    if (branch) qs.set('branch', branch);
-    qs.set('days', String(days));
-    return fetchJSON<AnalyticsOverview>(`${API}/analytics/overview?${qs}`);
-  },
-
-  analyticsSession: (sessionId: string) =>
-    fetchJSON<Record<string, unknown>>(`${API}/analytics/sessions/${sessionId}`),
-
-  analyticsAgent: (agentId: string, days = 30) =>
-    fetchJSON<Record<string, unknown>>(`${API}/analytics/agents/${agentId}?days=${days}`),
-
-  analyticsTrends: (days = 30, granularity = 'day', branch?: string) => {
-    const qs = new URLSearchParams({ days: String(days), granularity });
-    if (branch) qs.set('branch', branch);
-    return fetchJSON<TrendData>(`${API}/analytics/trends?${qs}`);
-  },
-
-  analyticsConversation: (conversationId: string) =>
-    fetchJSON<Record<string, unknown>>(`${API}/analytics/conversations/${conversationId}`),
-
-  // Knowledge graph
-  getKnowledgeGraph: (params?: {
-    entity?: string;
-    relation_type?: string;
-    depth?: number;
-    branch?: string;
-    limit?: number;
-  }) => {
-    const qs = new URLSearchParams();
-    if (params?.entity) qs.set('entity', params.entity);
-    if (params?.relation_type) qs.set('relation_type', params.relation_type);
-    if (params?.depth) qs.set('depth', String(params.depth));
-    if (params?.branch) qs.set('branch', params.branch);
-    if (params?.limit) qs.set('limit', String(params.limit));
-    return fetchJSON<KnowledgeGraphResponse>(
-      `${API}/relations/graph${qs.toString() ? `?${qs}` : ''}`
-    );
-  },
-
-  // Scores
-  evaluateConversation: (conversationId: string, dimensions?: string[]) =>
-    fetchJSON<{ scores: ScoreEntry[] }>(`${API}/conversations/${conversationId}/evaluate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dimensions }),
-    }),
-
-  listScores: (params?: { target_type?: string; target_id?: string; dimension?: string; limit?: number }) => {
-    const qs = new URLSearchParams();
-    if (params?.target_type) qs.set('target_type', params.target_type);
-    if (params?.target_id) qs.set('target_id', params.target_id);
-    if (params?.dimension) qs.set('dimension', params.dimension);
-    if (params?.limit) qs.set('limit', String(params.limit));
-    return fetchJSON<{ scores: ScoreEntry[] }>(`${API}/scores?${qs}`);
-  },
-
-  scoreSummary: (targetType: string, targetId: string) =>
-    fetchJSON<ScoreSummary>(`${API}/scores/summary/${targetType}/${targetId}`),
-
-  // Branch Topology
-  getTopology: (rootBranch = 'main', maxDepth = 10, includeArchived = false) =>
-    fetchJSON<BranchTopologyNode>(
-      `${API}/branches/topology?root_branch=${rootBranch}&max_depth=${maxDepth}&include_archived=${includeArchived}`
-    ),
-
-  getBranchStats: (name: string) =>
-    fetchJSON<BranchStats>(`${API}/branches/${name}/stats`),
-
-  enrichBranch: (name: string, data: {
-    purpose?: string;
-    owner?: string;
-    ttl_days?: number;
-    tags?: string[];
-  }) =>
-    fetchJSON<{ branch_name: string; metadata: Record<string, unknown> }>(
-      `${API}/branches/${name}/enrich`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      }
-    ),
-
-  autoArchive: (inactiveDays = 30, archiveMerged = true, dryRun = false) =>
-    fetchJSON<AutoArchiveResult>(`${API}/branches/auto-archive`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        inactive_days: inactiveDays,
-        archive_merged: archiveMerged,
-        dry_run: dryRun,
-      }),
-    }),
-
-  getExpiredBranches: () =>
-    fetchJSON<{ expired: TTLExpiredBranch[]; count: number }>(
-      `${API}/branches/expired`
-    ),
-
-  validateBranchName: (name: string) =>
-    fetchJSON<BranchNameValidation>(`${API}/branches/validate-name`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ branch_name: name }),
-    }),
-
-  // Templates
-  listTemplates: (taskType?: string, status = 'active', limit = 20) => {
-    const qs = new URLSearchParams({ status, limit: String(limit) });
-    if (taskType) qs.set('task_type', taskType);
-    return fetchJSON<TemplateListResponse>(`${API}/templates?${qs}`);
-  },
-
-  getTemplate: (name: string) =>
-    fetchJSON<TemplateBranch>(`${API}/templates/${name}`),
-
-  createTemplate: (data: {
-    name: string;
-    source_branch: string;
-    description?: string;
-    applicable_task_types?: string[];
-    tags?: string[];
-    created_by?: string;
-  }) =>
-    fetchJSON<TemplateBranch>(`${API}/templates`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    }),
-
-  instantiateTemplate: (name: string, targetBranch: string, taskId?: string) =>
-    fetchJSON<TemplateInstantiateResult>(
-      `${API}/templates/${name}/instantiate`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          target_branch_name: targetBranch,
-          task_id: taskId,
-        }),
-      }
-    ),
-
-  updateTemplate: (name: string, sourceBranch: string, reason?: string) =>
-    fetchJSON<TemplateBranch>(`${API}/templates/${name}/update`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source_branch: sourceBranch, reason }),
-    }),
-
-  deprecateTemplate: (name: string) =>
-    fetchJSON<TemplateBranch>(`${API}/templates/${name}/deprecate`, {
-      method: 'POST',
-    }),
-
-  findTemplate: (taskType: string, taskDescription?: string) => {
-    const qs = new URLSearchParams({ task_type: taskType });
-    if (taskDescription) qs.set('task_description', taskDescription);
-    return fetchJSON<{ template: TemplateBranch | null }>(
-      `${API}/templates/find?${qs}`
-    );
-  },
-
-  // Verification
-  verifyFact: (factId: string, dimensions?: string[], context?: string) =>
-    fetchJSON<VerificationResult>(`${API}/facts/${factId}/verify`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dimensions, context }),
-    }),
-
-  getVerificationStatus: (factId: string) =>
-    fetchJSON<Record<string, unknown>>(`${API}/facts/${factId}/verification`),
-
-  batchVerify: (branchName: string, limit = 50, onlyUnverified = true) =>
-    fetchJSON<BatchVerifyResult>(`${API}/verification/batch`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        branch_name: branchName,
-        limit,
-        only_unverified: onlyUnverified,
-      }),
-    }),
-
-  getVerifiedFacts: (branchName = 'main', category?: string, limit = 100) => {
-    const qs = new URLSearchParams({ branch_name: branchName, limit: String(limit) });
-    if (category) qs.set('category', category);
-    return fetchJSON<{ facts: Array<Record<string, unknown>> }>(
-      `${API}/verification/verified?${qs}`
-    );
-  },
-
-  checkMergeGate: (sourceBranch: string, requireVerified = true) =>
-    fetchJSON<MergeGateResult>(`${API}/verification/merge-gate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source_branch: sourceBranch,
-        require_verified: requireVerified,
-      }),
-    }),
-
-  getVerificationSummary: (branchName: string) =>
-    fetchJSON<VerificationSummary>(`${API}/verification/summary/${branchName}`),
-
-  // Handoffs
-  createHandoff: (data: {
-    source_branch: string;
-    target_branch: string;
-    handoff_type?: string;
-    include_unverified?: boolean;
-    context_summary?: string;
-    fact_ids?: string[];
-    conversation_ids?: string[];
-  }) =>
-    fetchJSON<HandoffRecord>(`${API}/handoffs`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    }),
-
-  getHandoffPacket: (handoffId: string, includeMessages = true) =>
-    fetchJSON<HandoffPacket>(
-      `${API}/handoffs/${handoffId}?include_messages=${includeMessages}`
-    ),
-
-  listHandoffs: (params?: {
-    source_branch?: string;
-    target_branch?: string;
-    handoff_type?: string;
-    limit?: number;
-  }) => {
-    const qs = new URLSearchParams();
-    if (params?.source_branch) qs.set('source_branch', params.source_branch);
-    if (params?.target_branch) qs.set('target_branch', params.target_branch);
-    if (params?.handoff_type) qs.set('handoff_type', params.handoff_type);
-    if (params?.limit) qs.set('limit', String(params.limit));
-    const q = qs.toString();
-    return fetchJSON<{ handoffs: HandoffRecord[] }>(
-      `${API}/handoffs${q ? `?${q}` : ''}`
-    );
-  },
-
-  // Knowledge Bundles
-  createBundle: (data: {
-    name: string;
-    source_branch: string;
-    description?: string;
-    tags?: string[];
-    only_verified?: boolean;
-    fact_ids?: string[];
-    conversation_ids?: string[];
-  }) =>
-    fetchJSON<KnowledgeBundle>(`${API}/bundles`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    }),
-
-  listBundles: (status = 'active', limit = 20) =>
-    fetchJSON<{ bundles: KnowledgeBundle[] }>(
-      `${API}/bundles?status=${status}&limit=${limit}`
-    ),
-
-  getBundle: (bundleId: string) =>
-    fetchJSON<KnowledgeBundle>(`${API}/bundles/${bundleId}`),
-
-  exportBundle: (bundleId: string) =>
-    fetchJSON<Record<string, unknown>>(`${API}/bundles/${bundleId}/export`),
-
-  importBundle: (bundleId: string, targetBranch: string) =>
-    fetchJSON<BundleImportResult>(`${API}/bundles/${bundleId}/import`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ target_branch: targetBranch }),
-    }),
-};
+async function callTool<T = unknown>(name: string, args: Record<string, unknown> = {}): Promise<T> {
+  const body = { tool: name, arguments: args };
+  const res = await fetchJSON<{ result: T }>(`${BASE}/ingest/mcp`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  return res.result;
+}
+
+export async function checkHealth(): Promise<boolean> {
+  try {
+    const res = await fetch('/health');
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function getTimeline(
+  branch = 'main',
+  limit = 50,
+  category?: string,
+  source_type?: string,
+): Promise<{ timeline: Memory[]; count: number }> {
+  const params = new URLSearchParams({ branch, limit: String(limit) });
+  if (category) params.set('category', category);
+  if (source_type) params.set('source_type', source_type);
+  return fetchJSON(`${BASE}/memories/timeline?${params}`);
+}
+
+export async function getCount(branch = 'main'): Promise<{ branch: string; count: number }> {
+  return fetchJSON(`${BASE}/memories/count?branch=${encodeURIComponent(branch)}`);
+}
+
+export async function searchMemories(
+  query: string,
+  branch = 'main',
+  limit = 20,
+  category?: string,
+): Promise<{ results: Memory[]; count: number }> {
+  const args: Record<string, unknown> = { query, branch, limit };
+  if (category) args.category = category;
+  return callTool('memory_search', args);
+}
+
+export async function writeMemory(
+  text: string,
+  context?: string,
+  branch = 'main',
+  category?: string,
+  confidence = 0.7,
+  source_type?: string,
+): Promise<{ id: string; created_at: string }> {
+  const args: Record<string, unknown> = { text, branch, confidence };
+  if (context) args.context = context;
+  if (category) args.category = category;
+  if (source_type) args.source_type = source_type;
+  return callTool('memory_write', args);
+}
+
+export async function listBranches(): Promise<{ branches: Branch[] }> {
+  return callTool('memory_branch_list', {});
+}
+
+export async function createBranch(
+  branch_name: string,
+  parent = 'main',
+  description?: string,
+): Promise<Branch> {
+  const args: Record<string, unknown> = { branch_name, parent };
+  if (description) args.description = description;
+  return callTool('memory_branch_create', args);
+}
+
+export async function mergeBranch(
+  source_branch: string,
+  target_branch = 'main',
+): Promise<{ source_branch: string; target_branch: string; merged: number; skipped_duplicates: number }> {
+  return callTool('memory_merge', { source_branch, target_branch });
+}
+
+export async function listSnapshots(
+  branch?: string,
+): Promise<{ snapshots: Snapshot[] }> {
+  const args: Record<string, unknown> = {};
+  if (branch) args.branch = branch;
+  return callTool('memory_snapshot_list', args);
+}
+
+export async function createSnapshot(
+  branch = 'main',
+  label?: string,
+): Promise<{ snapshot_id: string; label: string; created_at: string }> {
+  const args: Record<string, unknown> = { branch };
+  if (label) args.label = label;
+  return callTool('memory_snapshot', args);
+}
