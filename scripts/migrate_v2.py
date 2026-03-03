@@ -38,6 +38,33 @@ async def migrate():
         except Exception as e:
             logger.info("FULLTEXT index may already exist: %s", e)
 
+        # Idempotent schema enrichment columns (safe to rerun)
+        enrichment_columns = [
+            ("category", "VARCHAR(50) DEFAULT NULL"),
+            ("confidence", "FLOAT DEFAULT 0.7"),
+            ("source_type", "VARCHAR(50) DEFAULT NULL"),
+            ("status", "VARCHAR(20) DEFAULT 'active'"),
+        ]
+        for col_name, col_def in enrichment_columns:
+            try:
+                await conn.execute(text(f"ALTER TABLE memories ADD COLUMN {col_name} {col_def}"))
+                logger.info("Added column: memories.%s", col_name)
+            except Exception as e:
+                logger.info("Column memories.%s may already exist: %s", col_name, e)
+
+        # Indexes for new columns
+        enrichment_indexes = [
+            ("idx_mem_category", "category"),
+            ("idx_mem_source_type", "source_type"),
+            ("idx_mem_status", "status"),
+        ]
+        for idx_name, col_name in enrichment_indexes:
+            try:
+                await conn.execute(text(f"CREATE INDEX {idx_name} ON memories({col_name})"))
+                logger.info("Created index: %s", idx_name)
+            except Exception as e:
+                logger.info("Index %s may already exist: %s", idx_name, e)
+
     await engine.dispose()
     logger.info("Migration complete.")
 

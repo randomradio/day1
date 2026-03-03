@@ -9,7 +9,6 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
-from day1.core.branch_manager import BranchManager
 from day1.db.engine import close_db, get_session, init_db
 
 ACTIVE_BRANCH = "main"
@@ -45,11 +44,13 @@ def run_async(coro: Awaitable[int | None]) -> int:
 
 
 async def with_session(fn: Callable[[Any], Awaitable[Any]]) -> Any:
+    from day1.core.memory_engine import MemoryEngine
+
     await init_db()
     session_gen = get_session()
     session = await anext(session_gen)
     try:
-        await BranchManager(session).ensure_main_branch()
+        await MemoryEngine(session).ensure_main_branch()
         return await fn(session)
     finally:
         await session_gen.aclose()

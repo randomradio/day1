@@ -18,6 +18,7 @@ from day1.logging_config import setup_logging
 setup_logging()
 logger = logging.getLogger(__name__)
 
+from day1.api.routes.ingest import router as ingest_router
 from day1.db.engine import close_db, init_db
 from day1.mcp import mcp_server
 
@@ -66,6 +67,8 @@ for _mcp_path in ("/mcp", "/mcp/"):
         methods=["GET", "POST", "DELETE"],
         include_in_schema=False,
     )
+
+app.include_router(ingest_router, prefix="/api/v1")
 
 app.add_middleware(
     CORSMiddleware,

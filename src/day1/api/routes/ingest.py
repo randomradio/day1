@@ -11,15 +11,11 @@ from day1.core.exceptions import (
     BranchExistsError,
     BranchNotFoundError,
     Day1Error,
-    FactNotFoundError,
-    MergeConflictError,
-    TaskNotFoundError,
 )
 from day1.mcp import mcp_server
 from day1.mcp.tools import TOOL_DEFINITIONS
 
 router = APIRouter()
-_hook_active_conversations: dict[str, str] = {}
 
 
 class ToolInvokeRequest(BaseModel):
@@ -38,9 +34,9 @@ def _tool_exists(name: str) -> bool:
 
 
 def _map_tool_exception(exc: Exception) -> HTTPException:
-    if isinstance(exc, (BranchNotFoundError, FactNotFoundError, TaskNotFoundError)):
+    if isinstance(exc, BranchNotFoundError):
         return HTTPException(status_code=404, detail=str(exc) or exc.__class__.__name__)
-    if isinstance(exc, (BranchExistsError, MergeConflictError)):
+    if isinstance(exc, BranchExistsError):
         return HTTPException(status_code=409, detail=str(exc) or exc.__class__.__name__)
     if isinstance(exc, Day1Error):
         return HTTPException(status_code=400, detail=str(exc) or exc.__class__.__name__)
@@ -82,6 +78,25 @@ def _extract_text(payload: Any) -> str | None:
 
 def _truncate(value: str, limit: int = 2000) -> str:
     return value if len(value) <= limit else value[: limit - 3] + "..."
+
+
+def _event_metadata(event: str) -> dict:
+    """Map hook event names to category/source_type/confidence for enrichment."""
+    event_lower = event.lower()
+    mapping = {
+        "sessionstart": ("session", "session_start", 0.5),
+        "userpromptsubmit": ("conversation", "user_input", 0.6),
+        "pretooluse": ("tool", "tool_call", 0.6),
+        "posttooluse": ("tool", "tool_observation", 0.6),
+        "stop": ("conversation", "assistant_response", 0.7),
+        "assistantresponse": ("conversation", "assistant_response", 0.7),
+        "precompact": ("insight", "compaction", 0.85),
+        "sessionend": ("session", "session_end", 0.5),
+    }
+    for key, (category, source_type, confidence) in mapping.items():
+        if key in event_lower:
+            return {"category": category, "source_type": source_type, "confidence": confidence}
+    return {"category": "unknown", "source_type": "hook", "confidence": 0.5}
 
 
 def _extract_hook_message_content(event: str, payload: Any) -> str | None:
@@ -131,6 +146,34 @@ def _tool_summary(
             f"Output: {_truncate(tool_output or '', 180)}"
         ).strip()
     return f"Tool {tool_name} called. Input: {_truncate(tool_input or '', 220)}".strip()
+
+
+@router.get("/memories/timeline")
+async def memory_timeline(
+    branch: str = "main",
+    limit: int = 20,
+    category: str | None = None,
+    source_type: str | None = None,
+    session_id: str | None = None,
+):
+    """Get chronological memory timeline for a branch."""
+    result = await mcp_server.dispatch_tool_call(
+        "memory_timeline",
+        {
+            "branch": branch,
+            "limit": limit,
+            **({"category": category} if category else {}),
+            **({"source_type": source_type} if source_type else {}),
+            **({"session_id": session_id} if session_id else {}),
+        },
+    )
+    return result
+
+
+@router.get("/memories/count")
+async def memory_count(branch: str = "main"):
+    """Get memory count for a branch."""
+    return await mcp_server.dispatch_tool_call("memory_count", {"branch": branch})
 
 
 @router.get("/ingest/mcp-tools")
@@ -225,19 +268,25 @@ async def ingest_claude_hook(
         if content:
             summary = f"{summary}: {_truncate(content, 160)}"
 
+    raw_context = _truncate(tool_input or raw_text or "{}", 2000)
+    if tool_output:
+        raw_context += f"\nOutput: {_truncate(tool_output, 2000)}"
+
+    meta = _event_metadata(event)
     obs_result = await mcp_server.dispatch_tool_call(
-        "memory_write_observation",
+        "memory_write",
         {
+            "text": summary,
+            "context": raw_context,
             "session_id": session_id,
-            "observation_type": "tool_use",
-            "tool_name": tool_name or f"claude_hook:{event}",
-            "summary": summary,
-            "raw_input": _truncate(tool_input or raw_text or "{}", 2000),
-            "raw_output": _truncate(tool_output, 2000) if tool_output else None,
+            "category": meta["category"],
+            "confidence": meta["confidence"],
+            "source_type": meta["source_type"],
         },
         session_id=session_id,
     )
 
+    # Best-effort: store message content as a second memory entry
     message_result = None
     message_error = None
     if content:
@@ -252,38 +301,20 @@ async def ingest_claude_hook(
 
         if role is not None:
             try:
+                msg_text = content if role not in {"tool_call", "tool_result"} else summary
                 message_result = await mcp_server.dispatch_tool_call(
-                    "memory_log_message",
+                    "memory_write",
                     {
-                        "role": role,
-                        "content": content if role not in {"tool_call", "tool_result"} else summary,
+                        "text": msg_text,
+                        "context": f"role:{role}",
                         "session_id": session_id,
-                        "conversation_id": _hook_active_conversations.get(session_id),
-                        "tool_calls": (
-                            [
-                                {
-                                    "name": tool_name or "unknown",
-                                    "input": tool_input,
-                                    "output": tool_output,
-                                    "hook_event": event,
-                                }
-                            ]
-                            if role in {"tool_call", "tool_result"} and tool_name
-                            else None
-                        ),
+                        "category": meta["category"],
+                        "confidence": meta["confidence"],
+                        "source_type": meta["source_type"],
                     },
                     session_id=session_id,
                 )
-                conv_id = (
-                    message_result.get("conversation_id")
-                    if isinstance(message_result, dict)
-                    else None
-                )
-                if conv_id:
-                    _hook_active_conversations[session_id] = conv_id
             except Exception as exc:
-                # Observation is the primary capture path.
-                # Message extraction remains best-effort.
                 message_error = str(exc)
                 message_result = None
 

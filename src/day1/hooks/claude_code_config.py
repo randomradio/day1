@@ -1,140 +1,88 @@
 """Generate Claude Code hooks configuration for integration.
 
-This module generates the hooks configuration that should be added to
-.claude/settings.json for automatic memory capture.
+Hooks use curl to POST to the Day1 HTTP API — no Python hook modules needed.
+MCP uses HTTP streamable transport at /mcp.
 """
 
 from __future__ import annotations
 
 import json
-import pathlib
+import os
 
 
-def _get_project_root() -> pathlib.Path:
-    """Get the project root directory (day1/)."""
-    return pathlib.Path(__file__).parent.parent.parent.parent
+_DEFAULT_API_BASE = "http://localhost:8000"
+_HOOK_EVENTS = [
+    "SessionStart",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PostToolUse",
+    "Stop",
+    "PreCompact",
+    "SessionEnd",
+]
 
 
-def _get_venv_python() -> str:
-    """Get absolute path to venv Python executable."""
-    root = _get_project_root()
-    return str(root / ".venv" / "bin" / "python")
+def _curl_command(api_base_url: str, api_key: str | None = None) -> str:
+    """Build the curl command for a hook event."""
+    auth = ""
+    if api_key:
+        auth = f" -H 'Authorization: Bearer {api_key}'"
+    return (
+        f"curl -sS -m 3 -X POST {api_base_url}/api/v1/ingest/claude-hook"
+        f" -H 'Content-Type: application/json'"
+        f" -H 'X-Day1-Hook-Event: $CLAUDE_HOOK_EVENT'"
+        f"{auth}"
+        f" --data-binary @-"
+    )
 
 
-def _get_src_path() -> str:
-    """Get absolute path to src directory for PYTHONPATH."""
-    root = _get_project_root()
-    return str(root / "src")
-
-
-def generate_hooks_config(project_root: str | None = None) -> dict:
-    """Generate Claude Code hooks configuration.
+def generate_hooks_config(
+    api_base_url: str | None = None,
+    api_key: str | None = None,
+) -> dict:
+    """Generate Claude Code hooks configuration (curl-based).
 
     Args:
-        project_root: Override project root path. If None, auto-detected.
+        api_base_url: Day1 server URL (default: http://localhost:8000).
+        api_key: Optional API key for authenticated access.
 
     Returns:
         Dict to merge into .claude/settings.json
-
-    Note: Uses new format with matcher + hooks array.
-    Matcher "*" means hook runs for all events.
     """
-    if project_root:
-        root = pathlib.Path(project_root)
-        python_path = str(root / ".venv" / "bin" / "python")
-        src_dir = str(root / "src")
-    else:
-        python_path = _get_venv_python()
-        src_dir = _get_src_path()
+    base = api_base_url or os.environ.get("DAY1_API_BASE_URL", _DEFAULT_API_BASE)
+    key = api_key or os.environ.get("DAY1_API_KEY")
+    cmd = _curl_command(base, key)
 
-    # Common environment for all hooks
-    common_env = {
-        "PYTHONPATH": src_dir,
-        "BM_DATABASE_URL": "mysql+aiomysql://root:111@localhost:6001/mo_catalog",
-    }
+    hooks: dict = {}
+    for event in _HOOK_EVENTS:
+        hooks[event] = [
+            {
+                "matcher": "*",
+                "hooks": [{"type": "command", "command": cmd}],
+            }
+        ]
 
-    def make_hook(module: str) -> dict:
-        return {
-            "type": "command",
-            "command": f"{python_path} -m {module}",
-            "env": common_env,
-        }
-
-    return {
-        "hooks": {
-            "SessionStart": [
-                {
-                    "matcher": "*",
-                    "hooks": [make_hook("day1.hooks.session_start")],
-                }
-            ],
-            "UserPromptSubmit": [
-                {
-                    "matcher": "*",
-                    "hooks": [make_hook("day1.hooks.user_prompt")],
-                }
-            ],
-            "PreToolUse": [
-                {
-                    "matcher": "*",
-                    "hooks": [make_hook("day1.hooks.pre_tool_use")],
-                }
-            ],
-            "PostToolUse": [
-                {
-                    "matcher": "*",
-                    "hooks": [make_hook("day1.hooks.post_tool_use")],
-                }
-            ],
-            "Stop": [
-                {
-                    "matcher": "*",
-                    "hooks": [make_hook("day1.hooks.assistant_response")],
-                }
-            ],
-            "PreCompact": [
-                {
-                    "matcher": "*",
-                    "hooks": [make_hook("day1.hooks.pre_compact")],
-                }
-            ],
-            "SessionEnd": [
-                {
-                    "matcher": "*",
-                    "hooks": [make_hook("day1.hooks.session_end")],
-                }
-            ],
-        }
-    }
+    return {"hooks": hooks}
 
 
-def generate_mcp_config(project_root: str | None = None) -> dict:
-    """Generate MCP server configuration for Claude Code.
+def generate_mcp_config(
+    api_base_url: str | None = None,
+) -> dict:
+    """Generate MCP server configuration for Claude Code (HTTP transport).
 
     Args:
-        project_root: Override project root path. If None, auto-detected.
+        api_base_url: Day1 server URL (default: http://localhost:8000).
 
     Returns:
         Dict to merge into .claude/settings.json or claude_desktop_config.json
     """
-    if project_root:
-        root = pathlib.Path(project_root)
-        python_path = str(root / ".venv" / "bin" / "python")
-        src_dir = str(root / "src")
-    else:
-        python_path = _get_venv_python()
-        src_dir = _get_src_path()
+    base = api_base_url or os.environ.get("DAY1_API_BASE_URL", _DEFAULT_API_BASE)
 
     return {
         "mcpServers": {
             "day1": {
-                "command": python_path,
-                "args": ["-m", "day1.mcp.mcp_server"],
-                "cwd": str(root if project_root else _get_project_root()),
-                "env": {
-                    "BM_DATABASE_URL": "mysql+aiomysql://root:111@localhost:6001/mo_catalog",
-                    "PYTHONPATH": src_dir,
-                },
+                "type": "http",
+                "url": f"{base}/mcp",
             }
         }
     }
@@ -142,10 +90,11 @@ def generate_mcp_config(project_root: str | None = None) -> dict:
 
 def main() -> None:
     """Print full Claude Code integration config."""
-    project_root = str(_get_project_root())
+    base = os.environ.get("DAY1_API_BASE_URL", _DEFAULT_API_BASE)
+    key = os.environ.get("DAY1_API_KEY")
     config = {
-        **generate_hooks_config(project_root),
-        **generate_mcp_config(project_root),
+        **generate_hooks_config(api_base_url=base, api_key=key),
+        **generate_mcp_config(api_base_url=base),
     }
     print(json.dumps(config, indent=2))
     print(

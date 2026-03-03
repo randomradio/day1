@@ -1,438 +1,313 @@
-"""Memory write/search/snapshot CLI commands."""
+"""CLI commands for memory operations: write, search, branch, snapshot, timeline, merge."""
 
 from __future__ import annotations
 
 import argparse
-from typing import Any
 
-from day1.cli.commands.common import (
-    emit,
-    get_active_branch,
-    parse_json_arg,
-    run_async,
-    with_session,
-)
-from day1.core.consolidation_engine import ConsolidationEngine
-from day1.core.embedding import get_embedding_provider
-from day1.core.fact_engine import FactEngine
-from day1.core.observation_engine import ObservationEngine
-from day1.core.relation_engine import RelationEngine
-from day1.core.search_engine import SearchEngine
-from day1.core.snapshot_manager import SnapshotManager
+from day1.cli.commands.common import emit, get_active_branch, run_async, with_session
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    write_fact = subparsers.add_parser("write-fact", help="Write a fact")
-    write_fact.add_argument("fact_text")
-    write_fact.add_argument("--category")
-    write_fact.add_argument("--confidence", type=float, default=1.0)
-    write_fact.add_argument("--branch")
-    write_fact.add_argument("--session-id")
-    write_fact.add_argument("--metadata", help="JSON object")
-    write_fact.add_argument(
-        "--format", choices=["table", "json", "text"], default="table"
-    )
-    write_fact.set_defaults(_handler=cmd_write_fact)
+    # ── write ─────────────────────────────────────────────────────────────
+    write_cmd = subparsers.add_parser("write", help="Store a memory")
+    write_cmd.add_argument("text", help="What happened (natural language)")
+    write_cmd.add_argument("--context", help="Why / how / outcome")
+    write_cmd.add_argument("--file", dest="file_context", help="Relevant file path")
+    write_cmd.add_argument("--session-id", help="Session identifier")
+    write_cmd.add_argument("--branch", help="Target branch (default: active)")
+    write_cmd.add_argument("--category", help="Category (decision, pattern, bug_fix, ...)")
+    write_cmd.add_argument("--confidence", type=float, default=0.7, help="Confidence 0-1")
+    write_cmd.add_argument("--source-type", help="Source type")
+    write_cmd.add_argument("--format", choices=["table", "json", "text"], default="table")
+    write_cmd.set_defaults(_handler=cmd_write)
 
-    write_obs = subparsers.add_parser("write-observation", help="Write an observation")
-    write_obs.add_argument("summary")
-    write_obs.add_argument("--observation-type", default="tool_use")
-    write_obs.add_argument("--session-id", default="cli-session")
-    write_obs.add_argument("--tool-name")
-    write_obs.add_argument("--branch")
-    write_obs.add_argument("--metadata", help="JSON object")
-    write_obs.add_argument(
-        "--format", choices=["table", "json", "text"], default="table"
-    )
-    write_obs.set_defaults(_handler=cmd_write_observation)
+    # ── search ────────────────────────────────────────────────────────────
+    search_cmd = subparsers.add_parser("search", help="Search memories")
+    search_cmd.add_argument("query", help="Natural language search query")
+    search_cmd.add_argument("--branch", help="Branch to search (default: active)")
+    search_cmd.add_argument("--file", dest="file_context", help="Filter by file path")
+    search_cmd.add_argument("--category", help="Filter by category")
+    search_cmd.add_argument("--source-type", help="Filter by source type")
+    search_cmd.add_argument("--status", help="Filter by status")
+    search_cmd.add_argument("--limit", type=int, default=10, help="Max results")
+    search_cmd.add_argument("--format", choices=["table", "json", "text"], default="table")
+    search_cmd.set_defaults(_handler=cmd_search)
 
-    write_rel = subparsers.add_parser("write-relation", help="Write a relation edge")
-    write_rel.add_argument("source_entity")
-    write_rel.add_argument("relation_type")
-    write_rel.add_argument("target_entity")
-    write_rel.add_argument("--branch")
-    write_rel.add_argument("--session-id")
-    write_rel.add_argument("--confidence", type=float, default=1.0)
-    write_rel.add_argument("--properties", help="JSON object")
-    write_rel.add_argument(
-        "--format", choices=["table", "json", "text"], default="table"
-    )
-    write_rel.set_defaults(_handler=cmd_write_relation)
+    # ── timeline ──────────────────────────────────────────────────────────
+    timeline_cmd = subparsers.add_parser("timeline", help="Chronological memory history")
+    timeline_cmd.add_argument("--branch", help="Branch (default: active)")
+    timeline_cmd.add_argument("--category", help="Filter by category")
+    timeline_cmd.add_argument("--source-type", help="Filter by source type")
+    timeline_cmd.add_argument("--session-id", help="Filter by session")
+    timeline_cmd.add_argument("--limit", type=int, default=20, help="Max results")
+    timeline_cmd.add_argument("--format", choices=["table", "json", "text"], default="table")
+    timeline_cmd.set_defaults(_handler=cmd_timeline)
 
-    search = subparsers.add_parser("search", help="Search facts")
-    search.add_argument("query")
-    search.add_argument("--branch")
-    search.add_argument(
-        "--search-type",
-        default="keyword",
-        choices=["keyword", "hybrid", "vector"],
-    )
-    search.add_argument("--category")
-    search.add_argument("--limit", type=int, default=10)
-    search.add_argument("--format", choices=["table", "json", "text"], default="table")
-    search.set_defaults(_handler=cmd_search)
+    # ── branch ────────────────────────────────────────────────────────────
+    branch_cmd = subparsers.add_parser("branch", help="Branch operations")
+    branch_sub = branch_cmd.add_subparsers(dest="branch_action")
 
-    graph = subparsers.add_parser("graph-query", help="Query relation graph")
-    graph.add_argument("entity")
-    graph.add_argument("--relation-type")
-    graph.add_argument("--depth", type=int, default=1)
-    graph.add_argument("--branch")
-    graph.add_argument("--format", choices=["table", "json", "text"], default="table")
-    graph.set_defaults(_handler=cmd_graph_query)
+    branch_list = branch_sub.add_parser("list", help="List branches")
+    branch_list.add_argument("--status", help="Filter by status")
+    branch_list.add_argument("--format", choices=["table", "json", "text"], default="table")
+    branch_list.set_defaults(_handler=cmd_branch_list)
 
-    timeline = subparsers.add_parser("timeline", help="Show fact/observation timeline")
-    timeline.add_argument("--session-id")
-    timeline.add_argument("--branch")
-    timeline.add_argument("--after")
-    timeline.add_argument("--before")
-    timeline.add_argument("--limit", type=int, default=50)
-    timeline.add_argument(
-        "--format", choices=["table", "json", "text"], default="table"
-    )
-    timeline.set_defaults(_handler=cmd_timeline)
+    branch_create = branch_sub.add_parser("create", help="Create a branch")
+    branch_create.add_argument("name", help="Branch name")
+    branch_create.add_argument("--parent", default="main", help="Parent branch")
+    branch_create.add_argument("--description", help="Branch description")
+    branch_create.add_argument("--format", choices=["table", "json", "text"], default="table")
+    branch_create.set_defaults(_handler=cmd_branch_create)
 
-    snapshot = subparsers.add_parser("snapshot", help="Create or list snapshots")
-    snapshot_sub = snapshot.add_subparsers(dest="snapshot_command")
+    branch_switch = branch_sub.add_parser("switch", help="Switch active branch")
+    branch_switch.add_argument("name", help="Branch to switch to")
+    branch_switch.set_defaults(_handler=cmd_branch_switch)
 
-    snapshot_create = snapshot_sub.add_parser("create", help="Create snapshot")
-    snapshot_create.add_argument("--branch")
-    snapshot_create.add_argument("--label")
-    snapshot_create.add_argument("--native", action="store_true")
-    snapshot_create.add_argument(
-        "--format", choices=["table", "json", "text"], default="table"
-    )
-    snapshot_create.set_defaults(_handler=cmd_snapshot_create, command="snapshot")
+    branch_cmd.set_defaults(_handler=lambda a: cmd_branch_list(a))
 
-    snapshot_list = snapshot_sub.add_parser("list", help="List snapshots")
-    snapshot_list.add_argument("--branch")
-    snapshot_list.add_argument(
-        "--format", choices=["table", "json", "text"], default="table"
-    )
-    snapshot_list.set_defaults(_handler=cmd_snapshot_list, command="snapshot")
+    # ── merge ─────────────────────────────────────────────────────────────
+    merge_cmd = subparsers.add_parser("merge", help="Merge branch into target")
+    merge_cmd.add_argument("source", help="Source branch name")
+    merge_cmd.add_argument("--into", default="main", help="Target branch (default: main)")
+    merge_cmd.add_argument("--format", choices=["table", "json", "text"], default="table")
+    merge_cmd.set_defaults(_handler=cmd_merge)
 
-    time_travel = subparsers.add_parser(
-        "time-travel",
-        help="Query facts at a timestamp",
-    )
-    time_travel.add_argument("timestamp")
-    time_travel.add_argument("--branch")
-    time_travel.add_argument("--query")
-    time_travel.add_argument("--category")
-    time_travel.add_argument("--limit", type=int, default=20)
-    time_travel.add_argument(
-        "--format", choices=["table", "json", "text"], default="table"
-    )
-    time_travel.set_defaults(_handler=cmd_time_travel)
+    # ── snapshot ──────────────────────────────────────────────────────────
+    snap_cmd = subparsers.add_parser("snapshot", help="Snapshot operations")
+    snap_sub = snap_cmd.add_subparsers(dest="snap_action")
 
-    consolidate = subparsers.add_parser("consolidate", help="Consolidate memory")
-    consolidate.add_argument(
-        "--scope",
-        required=True,
-        choices=["session", "agent", "task"],
-    )
-    consolidate.add_argument("--session-id")
-    consolidate.add_argument("--task-id")
-    consolidate.add_argument("--agent-id")
-    consolidate.add_argument("--branch")
-    consolidate.add_argument(
-        "--format", choices=["table", "json", "text"], default="table"
-    )
-    consolidate.set_defaults(_handler=cmd_consolidate)
+    snap_create = snap_sub.add_parser("create", help="Create a snapshot")
+    snap_create.add_argument("--label", help="Snapshot label")
+    snap_create.add_argument("--branch", help="Branch to snapshot (default: active)")
+    snap_create.add_argument("--format", choices=["table", "json", "text"], default="table")
+    snap_create.set_defaults(_handler=cmd_snapshot_create)
+
+    snap_list = snap_sub.add_parser("list", help="List snapshots")
+    snap_list.add_argument("--branch", help="Filter by branch")
+    snap_list.add_argument("--format", choices=["table", "json", "text"], default="table")
+    snap_list.set_defaults(_handler=cmd_snapshot_list)
+
+    snap_restore = snap_sub.add_parser("restore", help="View memories at snapshot time")
+    snap_restore.add_argument("snapshot_id", help="Snapshot ID")
+    snap_restore.add_argument("--format", choices=["table", "json", "text"], default="table")
+    snap_restore.set_defaults(_handler=cmd_snapshot_restore)
+
+    snap_cmd.set_defaults(_handler=lambda a: cmd_snapshot_list(a))
+
+    # ── count ─────────────────────────────────────────────────────────────
+    count_cmd = subparsers.add_parser("count", help="Count memories on a branch")
+    count_cmd.add_argument("--branch", help="Branch (default: active)")
+    count_cmd.add_argument("--format", choices=["table", "json", "text"], default="table")
+    count_cmd.set_defaults(_handler=cmd_count)
 
 
-def cmd_write_fact(args: argparse.Namespace) -> int:
-    return run_async(_cmd_write_fact(args))
+# ── Command handlers ──────────────────────────────────────────────────────
 
 
-async def _cmd_write_fact(args: argparse.Namespace) -> int:
-    metadata = parse_json_arg(args.metadata)
+def cmd_write(args: argparse.Namespace) -> int:
+    async def _run(session):
+        from day1.core.memory_engine import MemoryEngine
 
-    async def _run(session: Any) -> dict[str, Any]:
-        engine = FactEngine(session, get_embedding_provider())
-        fact = await engine.write_fact(
-            fact_text=args.fact_text,
+        engine = MemoryEngine(session)
+        branch = args.branch or get_active_branch()
+        mem = await engine.write(
+            text=args.text,
+            context=args.context,
+            file_context=args.file_context,
+            session_id=args.session_id,
+            branch_name=branch,
             category=args.category,
             confidence=args.confidence,
-            session_id=args.session_id,
-            branch_name=args.branch or get_active_branch(),
-            metadata=metadata,
+            source_type=args.source_type,
         )
-        return {
-            "id": fact.id,
-            "fact_text": fact.fact_text,
-            "category": fact.category,
-            "confidence": fact.confidence,
-            "branch_name": fact.branch_name,
-            "created_at": fact.created_at.isoformat() if fact.created_at else None,
-        }
-
-    emit(await with_session(_run), args.format)
-    return 0
-
-
-def cmd_write_observation(args: argparse.Namespace) -> int:
-    return run_async(_cmd_write_observation(args))
-
-
-async def _cmd_write_observation(args: argparse.Namespace) -> int:
-    metadata = parse_json_arg(args.metadata)
-
-    async def _run(session: Any) -> dict[str, Any]:
-        engine = ObservationEngine(session, get_embedding_provider())
-        obs = await engine.write_observation(
-            session_id=args.session_id,
-            observation_type=args.observation_type,
-            summary=args.summary,
-            tool_name=args.tool_name,
-            branch_name=args.branch or get_active_branch(),
-            metadata=metadata,
+        emit(
+            {
+                "id": mem.id,
+                "text": mem.text,
+                "branch": mem.branch_name,
+                "category": mem.category,
+                "created_at": mem.created_at.isoformat() if mem.created_at else None,
+            },
+            getattr(args, "format", "table"),
         )
-        return {
-            "id": obs.id,
-            "session_id": obs.session_id,
-            "observation_type": obs.observation_type,
-            "tool_name": obs.tool_name,
-            "summary": obs.summary,
-            "branch_name": obs.branch_name,
-            "created_at": obs.created_at.isoformat() if obs.created_at else None,
-        }
 
-    emit(await with_session(_run), args.format)
-    return 0
-
-
-def cmd_write_relation(args: argparse.Namespace) -> int:
-    return run_async(_cmd_write_relation(args))
-
-
-async def _cmd_write_relation(args: argparse.Namespace) -> int:
-    properties = parse_json_arg(args.properties)
-
-    async def _run(session: Any) -> dict[str, Any]:
-        engine = RelationEngine(session)
-        rel = await engine.write_relation(
-            source_entity=args.source_entity,
-            target_entity=args.target_entity,
-            relation_type=args.relation_type,
-            properties=properties,
-            confidence=args.confidence,
-            session_id=args.session_id,
-            branch_name=args.branch or get_active_branch(),
-        )
-        return {
-            "id": rel.id,
-            "source_entity": rel.source_entity,
-            "target_entity": rel.target_entity,
-            "relation_type": rel.relation_type,
-            "confidence": rel.confidence,
-            "branch_name": rel.branch_name,
-            "created_at": rel.created_at.isoformat() if rel.created_at else None,
-        }
-
-    emit(await with_session(_run), args.format)
-    return 0
+    return run_async(with_session(_run))
 
 
 def cmd_search(args: argparse.Namespace) -> int:
-    return run_async(_cmd_search(args))
+    async def _run(session):
+        from day1.core.memory_engine import MemoryEngine
 
-
-async def _cmd_search(args: argparse.Namespace) -> int:
-    async def _run(session: Any) -> dict[str, Any]:
-        engine = SearchEngine(session, get_embedding_provider())
+        engine = MemoryEngine(session)
+        branch = args.branch or get_active_branch()
         results = await engine.search(
             query=args.query,
-            search_type=args.search_type,
-            branch_name=args.branch or get_active_branch(),
-            category=args.category,
+            file_context=args.file_context,
+            branch_name=branch,
             limit=args.limit,
+            category=args.category,
+            source_type=args.source_type,
+            status=args.status,
         )
-        return {"results": results, "count": len(results)}
+        emit({"results": results, "count": len(results)}, getattr(args, "format", "table"))
 
-    emit(await with_session(_run), args.format)
-    return 0
-
-
-def cmd_graph_query(args: argparse.Namespace) -> int:
-    return run_async(_cmd_graph_query(args))
-
-
-async def _cmd_graph_query(args: argparse.Namespace) -> int:
-    async def _run(session: Any) -> dict[str, Any]:
-        engine = RelationEngine(session)
-        relations = await engine.graph_query(
-            entity=args.entity,
-            relation_type=args.relation_type,
-            depth=args.depth,
-            branch_name=args.branch or get_active_branch(),
-        )
-        return {"entity": args.entity, "relations": relations, "count": len(relations)}
-
-    emit(await with_session(_run), args.format)
-    return 0
+    return run_async(with_session(_run))
 
 
 def cmd_timeline(args: argparse.Namespace) -> int:
-    return run_async(_cmd_timeline(args))
+    async def _run(session):
+        from day1.core.memory_engine import MemoryEngine
 
-
-async def _cmd_timeline(args: argparse.Namespace) -> int:
-    async def _run(session: Any) -> dict[str, Any]:
-        embedder = get_embedding_provider()
-        fact_engine = FactEngine(session, embedder)
-        obs_engine = ObservationEngine(session, embedder)
+        engine = MemoryEngine(session)
         branch = args.branch or get_active_branch()
-
-        facts = await fact_engine.list_facts(branch_name=branch, limit=args.limit)
-        observations = await obs_engine.timeline(
+        entries = await engine.timeline(
             branch_name=branch,
-            session_id=args.session_id,
-            after=args.after,
-            before=args.before,
             limit=args.limit,
+            category=args.category,
+            source_type=args.source_type,
+            session_id=args.session_id,
+        )
+        emit({"timeline": entries, "count": len(entries)}, getattr(args, "format", "table"))
+
+    return run_async(with_session(_run))
+
+
+def cmd_branch_list(args: argparse.Namespace) -> int:
+    async def _run(session):
+        from day1.core.memory_engine import MemoryEngine
+
+        engine = MemoryEngine(session)
+        branches = await engine.list_branches(status=getattr(args, "status", None))
+        emit(
+            {
+                "branches": [
+                    {
+                        "branch_name": b.branch_name,
+                        "parent_branch": b.parent_branch,
+                        "status": b.status,
+                        "description": b.description or "",
+                    }
+                    for b in branches
+                ]
+            },
+            getattr(args, "format", "table"),
         )
 
-        timeline_items: list[dict[str, Any]] = []
-        for fact in facts:
-            timeline_items.append(
-                {
-                    "type": "fact",
-                    "id": fact.id,
-                    "content": fact.fact_text,
-                    "category": fact.category,
-                    "timestamp": (
-                        fact.created_at.isoformat() if fact.created_at else None
-                    ),
-                }
-            )
-        for obs in observations:
-            timeline_items.append(
-                {
-                    "type": "observation",
-                    "id": obs.id,
-                    "content": obs.summary,
-                    "observation_type": obs.observation_type,
-                    "tool_name": obs.tool_name,
-                    "timestamp": (
-                        obs.created_at.isoformat() if obs.created_at else None
-                    ),
-                }
-            )
-        timeline_items.sort(key=lambda x: x.get("timestamp") or "", reverse=True)
-        return {
-            "timeline": timeline_items[: args.limit],
-            "count": len(timeline_items[: args.limit]),
-        }
+    return run_async(with_session(_run))
 
-    emit(await with_session(_run), args.format)
-    return 0
+
+def cmd_branch_create(args: argparse.Namespace) -> int:
+    async def _run(session):
+        from day1.core.memory_engine import MemoryEngine
+
+        engine = MemoryEngine(session)
+        branch = await engine.create_branch(
+            branch_name=args.name,
+            parent_branch=args.parent,
+            description=args.description,
+        )
+        emit(
+            {
+                "branch_name": branch.branch_name,
+                "parent_branch": branch.parent_branch,
+                "status": branch.status,
+            },
+            getattr(args, "format", "table"),
+        )
+
+    return run_async(with_session(_run))
+
+
+def cmd_branch_switch(args: argparse.Namespace) -> int:
+    from day1.cli.commands.common import set_active_branch
+
+    async def _run(session):
+        from day1.core.memory_engine import MemoryEngine
+
+        engine = MemoryEngine(session)
+        await engine.get_branch(args.name)
+        set_active_branch(args.name)
+        print(f"Switched to branch: {args.name}")
+
+    return run_async(with_session(_run))
+
+
+def cmd_merge(args: argparse.Namespace) -> int:
+    async def _run(session):
+        from day1.core.memory_engine import MemoryEngine
+
+        engine = MemoryEngine(session)
+        result = await engine.merge_branch(
+            source_branch=args.source,
+            target_branch=args.into,
+        )
+        emit(result, getattr(args, "format", "table"))
+
+    return run_async(with_session(_run))
 
 
 def cmd_snapshot_create(args: argparse.Namespace) -> int:
-    return run_async(_cmd_snapshot_create(args))
+    async def _run(session):
+        from day1.core.memory_engine import MemoryEngine
 
-
-async def _cmd_snapshot_create(args: argparse.Namespace) -> int:
-    async def _run(session: Any) -> dict[str, Any]:
-        mgr = SnapshotManager(session)
+        engine = MemoryEngine(session)
         branch = args.branch or get_active_branch()
-        if args.native:
-            return await mgr.create_snapshot_native(
-                branch_name=branch,
-                label=args.label,
-            )
-        snapshot = await mgr.create_snapshot(branch_name=branch, label=args.label)
-        return {
-            "snapshot_id": snapshot.id,
-            "label": snapshot.label,
-            "branch_name": snapshot.branch_name,
-            "created_at": (
-                snapshot.created_at.isoformat() if snapshot.created_at else None
-            ),
-        }
+        snap = await engine.create_snapshot(branch_name=branch, label=args.label)
+        emit(
+            {
+                "snapshot_id": snap.id,
+                "label": snap.label,
+                "branch_name": snap.branch_name,
+                "created_at": snap.created_at.isoformat() if snap.created_at else None,
+            },
+            getattr(args, "format", "table"),
+        )
 
-    emit(await with_session(_run), args.format)
-    return 0
+    return run_async(with_session(_run))
 
 
 def cmd_snapshot_list(args: argparse.Namespace) -> int:
-    return run_async(_cmd_snapshot_list(args))
+    async def _run(session):
+        from day1.core.memory_engine import MemoryEngine
 
-
-async def _cmd_snapshot_list(args: argparse.Namespace) -> int:
-    async def _run(session: Any) -> dict[str, Any]:
-        mgr = SnapshotManager(session)
-        snapshots = await mgr.list_snapshots(
-            branch_name=args.branch or get_active_branch()
+        engine = MemoryEngine(session)
+        snaps = await engine.list_snapshots(branch_name=getattr(args, "branch", None))
+        emit(
+            {
+                "snapshots": [
+                    {
+                        "id": s.id,
+                        "label": s.label,
+                        "branch_name": s.branch_name,
+                        "created_at": s.created_at.isoformat() if s.created_at else None,
+                    }
+                    for s in snaps
+                ]
+            },
+            getattr(args, "format", "table"),
         )
-        return {
-            "snapshots": [
-                {
-                    "id": s.id,
-                    "label": s.label,
-                    "branch_name": s.branch_name,
-                    "created_at": s.created_at.isoformat() if s.created_at else None,
-                }
-                for s in snapshots
-            ]
-        }
 
-    emit(await with_session(_run), args.format)
-    return 0
+    return run_async(with_session(_run))
 
 
-def cmd_time_travel(args: argparse.Namespace) -> int:
-    return run_async(_cmd_time_travel(args))
+def cmd_snapshot_restore(args: argparse.Namespace) -> int:
+    async def _run(session):
+        from day1.core.memory_engine import MemoryEngine
+
+        engine = MemoryEngine(session)
+        result = await engine.restore_snapshot(args.snapshot_id)
+        emit(result, getattr(args, "format", "table"))
+
+    return run_async(with_session(_run))
 
 
-async def _cmd_time_travel(args: argparse.Namespace) -> int:
-    async def _run(session: Any) -> dict[str, Any]:
-        mgr = SnapshotManager(session)
-        results = await mgr.time_travel_query(
-            timestamp=args.timestamp,
-            branch_name=args.branch or get_active_branch(),
-            category=args.category,
-            limit=args.limit,
-        )
-        if args.query:
-            q = args.query.lower()
-            results = [r for r in results if q in str(r.get("fact_text", "")).lower()]
-        return {"timestamp": args.timestamp, "results": results, "count": len(results)}
+def cmd_count(args: argparse.Namespace) -> int:
+    async def _run(session):
+        from day1.core.memory_engine import MemoryEngine
 
-    emit(await with_session(_run), args.format)
-    return 0
-
-
-def cmd_consolidate(args: argparse.Namespace) -> int:
-    return run_async(_cmd_consolidate(args))
-
-
-async def _cmd_consolidate(args: argparse.Namespace) -> int:
-    async def _run(session: Any) -> dict[str, Any]:
-        engine = ConsolidationEngine(session)
+        engine = MemoryEngine(session)
         branch = args.branch or get_active_branch()
-        if args.scope == "session":
-            if not args.session_id:
-                raise ValueError("--session-id is required for --scope session")
-            return await engine.consolidate_session(
-                session_id=args.session_id,
-                branch_name=branch,
-                task_id=args.task_id,
-                agent_id=args.agent_id,
-            )
-        if args.scope == "agent":
-            if not args.task_id or not args.agent_id:
-                raise ValueError(
-                    "--task-id and --agent-id are required for --scope agent"
-                )
-            return await engine.consolidate_agent(
-                task_id=args.task_id, agent_id=args.agent_id
-            )
-        if args.scope == "task":
-            if not args.task_id:
-                raise ValueError("--task-id is required for --scope task")
-            return await engine.consolidate_task(task_id=args.task_id)
-        raise ValueError(f"Unsupported scope: {args.scope}")
+        cnt = await engine.count(branch_name=branch)
+        emit({"branch": branch, "count": cnt}, getattr(args, "format", "table"))
 
-    emit(await with_session(_run), args.format)
-    return 0
+    return run_async(with_session(_run))

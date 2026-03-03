@@ -28,6 +28,10 @@ class MemoryEngine:
         file_context: str | None = None,
         session_id: str | None = None,
         branch_name: str = "main",
+        category: str | None = None,
+        confidence: float = 0.7,
+        source_type: str | None = None,
+        status: str = "active",
     ) -> Memory:
         """Store a memory with NL text + optional context (WHY/HOW) and file path."""
         embedding_vec = await self._embedder.embed(text)
@@ -39,6 +43,10 @@ class MemoryEngine:
             file_context=file_context,
             session_id=session_id,
             branch_name=branch_name,
+            category=category,
+            confidence=confidence,
+            source_type=source_type,
+            status=status,
             embedding=vec_str,
         )
         self._session.add(mem)
@@ -54,8 +62,14 @@ class MemoryEngine:
         file_context: str | None = None,
         branch_name: str = "main",
         limit: int = 10,
+        category: str | None = None,
+        source_type: str | None = None,
+        status: str | None = None,
     ) -> list[dict]:
-        """Hybrid search: vector + keyword (MATCH AGAINST / LIKE fallback)."""
+        """Hybrid search: vector + keyword (MATCH AGAINST / LIKE fallback).
+
+        Supports filtering by category, source_type, and status.
+        """
         results: dict[str, dict] = {}
 
         keyword_hits = await self._keyword_search(query, branch_name, file_context, limit * 2)
@@ -68,6 +82,19 @@ class MemoryEngine:
                 results[r["id"]]["score"] = results[r["id"]]["score"] * 0.3 + r["score"] * 0.7
             else:
                 results[r["id"]] = r
+
+        # Apply enrichment filters post-search
+        if category or source_type or status:
+            filtered: dict[str, dict] = {}
+            for rid, r in results.items():
+                if category and r.get("category") != category:
+                    continue
+                if source_type and r.get("source_type") != source_type:
+                    continue
+                if status and r.get("status") != status:
+                    continue
+                filtered[rid] = r
+            results = filtered
 
         sorted_results = sorted(results.values(), key=lambda x: x["score"], reverse=True)
         return sorted_results[:limit]
@@ -250,6 +277,97 @@ class MemoryEngine:
             "memories": [self._to_dict(m, 1.0) for m in mems],
         }
 
+    # ── Timeline ─────────────────────────────────────────────────────────────
+
+    async def timeline(
+        self,
+        branch_name: str = "main",
+        limit: int = 20,
+        category: str | None = None,
+        source_type: str | None = None,
+        session_id: str | None = None,
+    ) -> list[dict]:
+        """Chronological list of memories (newest first)."""
+        stmt = (
+            select(Memory)
+            .where(Memory.branch_name == branch_name)
+            .order_by(Memory.created_at.desc())
+        )
+        if category:
+            stmt = stmt.where(Memory.category == category)
+        if source_type:
+            stmt = stmt.where(Memory.source_type == source_type)
+        if session_id:
+            stmt = stmt.where(Memory.session_id == session_id)
+        stmt = stmt.limit(limit)
+        mems = (await self._session.execute(stmt)).scalars().all()
+        return [self._to_dict(m, 1.0) for m in mems]
+
+    async def count(self, branch_name: str = "main") -> int:
+        """Count memories on a branch."""
+        from sqlalchemy import func
+
+        result = await self._session.execute(
+            select(func.count()).select_from(Memory).where(Memory.branch_name == branch_name)
+        )
+        return result.scalar() or 0
+
+    # ── Merge ────────────────────────────────────────────────────────────────
+
+    async def merge_branch(
+        self,
+        source_branch: str,
+        target_branch: str = "main",
+    ) -> dict:
+        """Copy all memories from source branch to target branch.
+
+        Returns summary of merged items. Does not delete the source branch.
+        """
+        # Verify both branches exist
+        await self.get_branch(source_branch)
+        await self.get_branch(target_branch)
+
+        # Get all memories on source branch
+        stmt = select(Memory).where(Memory.branch_name == source_branch)
+        source_mems = (await self._session.execute(stmt)).scalars().all()
+
+        # Get existing texts on target to avoid duplicates
+        target_stmt = select(Memory.text).where(Memory.branch_name == target_branch)
+        target_texts = set(
+            (await self._session.execute(target_stmt)).scalars().all()
+        )
+
+        merged_count = 0
+        skipped_count = 0
+        for mem in source_mems:
+            if mem.text in target_texts:
+                skipped_count += 1
+                continue
+            new_mem = Memory(
+                text=mem.text,
+                context=mem.context,
+                file_context=mem.file_context,
+                session_id=mem.session_id,
+                branch_name=target_branch,
+                category=mem.category,
+                confidence=mem.confidence,
+                source_type=mem.source_type,
+                status=mem.status,
+                embedding=mem.embedding,
+            )
+            self._session.add(new_mem)
+            merged_count += 1
+
+        if merged_count > 0:
+            await self._session.commit()
+
+        return {
+            "source_branch": source_branch,
+            "target_branch": target_branch,
+            "merged": merged_count,
+            "skipped_duplicates": skipped_count,
+        }
+
     # ── Helpers ──────────────────────────────────────────────────────────────
 
     @staticmethod
@@ -261,6 +379,10 @@ class MemoryEngine:
             "file_context": m.file_context,
             "session_id": m.session_id,
             "branch_name": m.branch_name,
+            "category": m.category,
+            "confidence": m.confidence,
+            "source_type": m.source_type,
+            "status": m.status,
             "score": score,
             "created_at": m.created_at.isoformat() if m.created_at else None,
         }

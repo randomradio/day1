@@ -87,7 +87,7 @@ def cmd_dashboard(_args: argparse.Namespace) -> int:
 
 def cmd_migrate(_args: argparse.Namespace) -> int:
     return subprocess.call(
-        [sys.executable, str(_project_root() / "scripts" / "migrate.py")]
+        [sys.executable, str(_project_root() / "scripts" / "migrate_v2.py")]
     )
 
 
@@ -96,14 +96,14 @@ def cmd_init(_args: argparse.Namespace) -> int:
 
 
 async def _cmd_init() -> int:
-    from day1.core.branch_manager import BranchManager
+    from day1.core.memory_engine import MemoryEngine
     from day1.db.engine import get_session, init_db
 
     await init_db()
     session_gen = get_session()
     session = await anext(session_gen)
     try:
-        await BranchManager(session).ensure_main_branch()
+        await MemoryEngine(session).ensure_main_branch()
     finally:
         await session_gen.aclose()
     print("initialized: ok")

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import uuid
 from pathlib import Path
 
 import pytest
@@ -40,8 +39,8 @@ _TEST_DB_URL = os.environ.get(
 os.environ["BM_DATABASE_URL"] = _TEST_DB_URL
 os.environ["BM_EMBEDDING_PROVIDER"] = "mock"
 
-from day1.core.branch_manager import BranchManager
 from day1.core.embedding import MockEmbedding
+from day1.core.memory_engine import MemoryEngine
 from day1.db.models import Base
 
 
@@ -54,12 +53,11 @@ async def db_session():
     """
     engine = create_async_engine(_TEST_DB_URL, echo=False)
 
-    # Cleanup: drop ALL tables including DATA BRANCH tables
+    # Cleanup: drop ALL tables including any leftover branch tables
     async with engine.begin() as conn:
-        # First, drop any branch tables (suffixed versions of base tables)
         result = await conn.execute(text("SHOW TABLES"))
         all_tables = [row[0] for row in result.fetchall()]
-        base_tables = {"facts", "relations", "observations", "conversations", "messages", "branch_registry", "merge_history", "sessions", "template_branches", "handoff_records", "knowledge_bundles"}
+        base_tables = {"memories", "branches", "snapshots"}
         for tbl in all_tables:
             if tbl not in base_tables:
                 try:
@@ -71,8 +69,7 @@ async def db_session():
         await conn.run_sync(Base.metadata.create_all)
         # Create FULLTEXT indexes (MO auto-indexes, replaces FTS5 virtual tables)
         for stmt in [
-            "CREATE FULLTEXT INDEX IF NOT EXISTS ft_facts ON facts(fact_text, category)",
-            "CREATE FULLTEXT INDEX IF NOT EXISTS ft_obs ON observations(summary, tool_name)",
+            "CREATE FULLTEXT INDEX IF NOT EXISTS ft_memories ON memories(text, context)",
         ]:
             try:
                 await conn.execute(text(stmt))
@@ -83,15 +80,14 @@ async def db_session():
 
     async with session_factory() as session:
         # Ensure main branch exists and is committed
-        mgr = BranchManager(session)
-        await mgr.ensure_main_branch()
+        mem_engine = MemoryEngine(session)
+        await mem_engine.ensure_main_branch()
         await session.commit()
         yield session
 
-    # Cleanup: drop ALL tables including DATA BRANCH tables
+    # Cleanup: drop ALL tables
     async with engine.begin() as conn:
-        # Drop branch tables first
-        base_tables = {"facts", "relations", "observations", "conversations", "messages", "branch_registry", "merge_history", "sessions", "template_branches", "handoff_records", "knowledge_bundles"}
+        base_tables = {"memories", "branches", "snapshots"}
         result = await conn.execute(text("SHOW TABLES"))
         all_tables = [row[0] for row in result.fetchall()]
         for tbl in all_tables:

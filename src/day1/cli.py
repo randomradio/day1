@@ -64,7 +64,7 @@ def cmd_dashboard() -> int:
 def cmd_migrate() -> int:
     """Run database migrations."""
     return subprocess.call(
-        [sys.executable, str(_project_root() / "scripts" / "migrate.py")]
+        [sys.executable, str(_project_root() / "scripts" / "migrate_v2.py")]
     )
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Index, String, Text, func
+from sqlalchemy import DateTime, Float, Index, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -35,6 +35,10 @@ class Memory(Base):
     file_context: Mapped[str | None] = mapped_column(String(500), nullable=True)
     session_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     branch_name: Mapped[str] = mapped_column(String(100), default="main")
+    category: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    confidence: Mapped[float] = mapped_column(Float, default=0.7)
+    source_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="active")
     embedding: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
@@ -43,6 +47,9 @@ class Memory(Base):
         Index("idx_mem_session", "session_id"),
         Index("idx_mem_file", "file_context"),
         Index("idx_mem_created", "created_at"),
+        Index("idx_mem_category", "category"),
+        Index("idx_mem_source_type", "source_type"),
+        Index("idx_mem_status", "status"),
     )
 
 

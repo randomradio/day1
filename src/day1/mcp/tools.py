@@ -1,4 +1,4 @@
-"""MCP tool definitions and handlers — 8 tools, NL-first."""
+"""MCP tool definitions and handlers — 11 tools, NL-first."""
 
 from __future__ import annotations
 
@@ -25,13 +25,16 @@ TOOL_DEFINITIONS: list[Tool] = [
                 "file_context": {"type": "string", "description": "Relevant file path (optional)"},
                 "session_id": {"type": "string", "description": "Session or agent identifier"},
                 "branch": {"type": "string", "description": "Target branch (default: active branch)"},
+                "category": {"type": "string", "description": "Memory category (e.g. pattern, decision, bug_fix, session, conversation)"},
+                "confidence": {"type": "number", "description": "Confidence score 0.0-1.0 (default: 0.7)"},
+                "source_type": {"type": "string", "description": "Source type (e.g. user_input, tool_observation, assistant_response)"},
             },
             "required": ["text"],
         },
     ),
     Tool(
         name="memory_search",
-        description="Search memories with natural language. Returns relevant memories from the active branch.",
+        description="Search memories with natural language. Returns relevant memories from the active branch. Supports filtering by category, source_type, status.",
         inputSchema={
             "type": "object",
             "properties": {
@@ -39,6 +42,9 @@ TOOL_DEFINITIONS: list[Tool] = [
                 "file_context": {"type": "string", "description": "Filter by file path"},
                 "branch": {"type": "string", "description": "Branch to search"},
                 "limit": {"type": "integer", "description": "Max results (default: 10)"},
+                "category": {"type": "string", "description": "Filter by category (e.g. decision, pattern, bug_fix)"},
+                "source_type": {"type": "string", "description": "Filter by source type"},
+                "status": {"type": "string", "description": "Filter by status (active, verified, archived)"},
             },
             "required": ["query"],
         },
@@ -109,6 +115,42 @@ TOOL_DEFINITIONS: list[Tool] = [
             "required": ["snapshot_id"],
         },
     ),
+    Tool(
+        name="memory_timeline",
+        description="Get chronological list of memories (newest first). Filter by category, source_type, or session.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "branch": {"type": "string", "description": "Branch to query (default: active)"},
+                "limit": {"type": "integer", "description": "Max results (default: 20)"},
+                "category": {"type": "string", "description": "Filter by category"},
+                "source_type": {"type": "string", "description": "Filter by source type"},
+                "session_id": {"type": "string", "description": "Filter by session"},
+            },
+        },
+    ),
+    Tool(
+        name="memory_merge",
+        description="Merge all memories from source branch into target branch. Skips duplicates.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "source_branch": {"type": "string", "description": "Branch to merge from"},
+                "target_branch": {"type": "string", "description": "Branch to merge into (default: main)"},
+            },
+            "required": ["source_branch"],
+        },
+    ),
+    Tool(
+        name="memory_count",
+        description="Count memories on a branch.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "branch": {"type": "string", "description": "Branch to count (default: active)"},
+            },
+        },
+    ),
 ]
 
 
@@ -129,6 +171,9 @@ async def handle_tool_call(
             file_context=arguments.get("file_context"),
             session_id=arguments.get("session_id"),
             branch_name=branch,
+            category=arguments.get("category"),
+            confidence=arguments.get("confidence", 0.7),
+            source_type=arguments.get("source_type"),
         )
         return {"id": mem.id, "created_at": mem.created_at}
 
@@ -138,6 +183,9 @@ async def handle_tool_call(
             file_context=arguments.get("file_context"),
             branch_name=branch,
             limit=arguments.get("limit", 10),
+            category=arguments.get("category"),
+            source_type=arguments.get("source_type"),
+            status=arguments.get("status"),
         )
         return {"results": results, "count": len(results)}
 
@@ -189,6 +237,26 @@ async def handle_tool_call(
 
     elif name == "memory_restore":
         return await engine.restore_snapshot(arguments["snapshot_id"])
+
+    elif name == "memory_timeline":
+        entries = await engine.timeline(
+            branch_name=branch,
+            limit=arguments.get("limit", 20),
+            category=arguments.get("category"),
+            source_type=arguments.get("source_type"),
+            session_id=arguments.get("session_id"),
+        )
+        return {"timeline": entries, "count": len(entries)}
+
+    elif name == "memory_merge":
+        return await engine.merge_branch(
+            source_branch=arguments["source_branch"],
+            target_branch=arguments.get("target_branch") or branch,
+        )
+
+    elif name == "memory_count":
+        cnt = await engine.count(branch_name=branch)
+        return {"branch": branch, "count": cnt}
 
     else:
         return {"error": f"Unknown tool: {name}"}

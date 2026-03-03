@@ -260,6 +260,60 @@ Template Branches──→  Task Handoff Protocol  ──→  Memory-Driven Rout
 
 ---
 
+## 2026-03-03: v2 Simplification — Infrastructure Fix + Feature Build-Out
+
+### Context
+
+After the v2 simplification (26 engines → 1 MemoryEngine, 3 tables, 8 MCP tools), critical infrastructure bugs existed:
+1. Ingest router never mounted in app.py — `/ingest/claude-hook` was unreachable
+2. `claude_code_config.py` referenced deleted Python hook modules
+3. `conftest.py` imported deleted `BranchManager`
+4. No schema enrichment for knowledge evolution pipeline
+
+### Decision: Three-Phase Build-Out on v2 Foundation
+
+**Phase 4 (Infrastructure Fix)** ✅ COMPLETED:
+- Mount ingest router with `/api/v1` prefix
+- Rewrite hooks config to curl-based (no Python modules needed)
+- Fix MCP config to HTTP transport
+- Schema enrichment: category, confidence, source_type, status on Memory
+- Hook-aware ingestion with event→metadata mapping
+- Fix conftest.py and create test suite
+
+**Phase 5 (CLI Memory Commands)** ✅ COMPLETED:
+- 7 new CLI commands: write, search, timeline, branch (list/create/switch), merge, snapshot (create/list/restore), count
+- Full argparse with format options (table/json/text)
+
+**Phase 6 (Enhanced Search + Timeline + Merge)** ✅ COMPLETED:
+- Search filtering by category, source_type, status
+- Timeline method (chronological, filterable by category/source_type/session)
+- Memory count per branch
+- Branch merge (copy memories, skip text-level duplicates)
+- 3 new MCP tools: memory_timeline, memory_merge, memory_count (8→11 total)
+- 2 new REST endpoints: GET /memories/timeline, GET /memories/count
+
+### Current v2 Surface
+
+| Layer | Count |
+|-------|-------|
+| Tables | 3 (memories, branches, snapshots) |
+| Memory columns | 12 (incl. category, confidence, source_type, status) |
+| MCP tools | 11 |
+| CLI commands | 14 (7 system + 7 memory) |
+| Hook events | 7 |
+| REST endpoints | 9 |
+
+### Next Steps
+
+Phase 7 candidates (v2):
+- Memory status lifecycle (active → verified → archived)
+- Branch diff (compare memories between branches)
+- Embedding backfill (batch job for `WHERE embedding IS NULL`)
+- Search by date range
+- Knowledge consolidation (summarize/compact memories)
+
+---
+
 ## Decision Log Format
 
 Future entries should follow this format:
