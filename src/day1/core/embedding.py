@@ -118,6 +118,53 @@ class DoubaoEmbedding(EmbeddingProvider):
             raise EmbeddingError(f"Doubao batch embedding failed: {e}") from e
 
 
+class OpenRouterEmbedding(EmbeddingProvider):
+    """OpenRouter embedding provider (OpenAI-compatible, supports Qwen3 etc.).
+
+    Default model: qwen/qwen3-embedding-0.6b (1024 dims, fast, multilingual).
+    Larger: qwen/qwen3-embedding-8b for higher quality.
+    """
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        model: str | None = None,
+        dims: int | None = None,
+    ) -> None:
+        try:
+            from openai import AsyncOpenAI
+        except ImportError as e:
+            raise EmbeddingError("openai package not installed") from e
+
+        self._client = AsyncOpenAI(
+            api_key=api_key or settings.openrouter_api_key,
+            base_url=base_url or settings.openrouter_base_url,
+        )
+        self._model = model or settings.openrouter_embedding_model
+        self._dims = dims or settings.embedding_dimensions
+
+    async def embed(self, text: str) -> list[float]:
+        try:
+            kwargs: dict = {"input": text, "model": self._model}
+            if self._dims:
+                kwargs["dimensions"] = self._dims
+            resp = await self._client.embeddings.create(**kwargs)
+            return resp.data[0].embedding
+        except openai.APIError as e:
+            raise EmbeddingError(f"OpenRouter embedding failed: {e}") from e
+
+    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        try:
+            kwargs: dict = {"input": texts, "model": self._model}
+            if self._dims:
+                kwargs["dimensions"] = self._dims
+            resp = await self._client.embeddings.create(**kwargs)
+            return [d.embedding for d in resp.data]
+        except openai.APIError as e:
+            raise EmbeddingError(f"OpenRouter batch embedding failed: {e}") from e
+
+
 class MockEmbedding(EmbeddingProvider):
     """Deterministic mock embedding for testing (hash-based)."""
 
@@ -146,6 +193,8 @@ def get_embedding_provider() -> EmbeddingProvider:
         return OpenAIEmbedding()
     elif provider == "doubao":
         return DoubaoEmbedding()
+    elif provider == "openrouter":
+        return OpenRouterEmbedding()
     return MockEmbedding()
 
 

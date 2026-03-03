@@ -19,10 +19,15 @@ class Settings(BaseSettings):
     database_url: str = "mysql+aiomysql://user:pass@localhost:6001/day1"
 
     # Embedding
-    embedding_provider: str = "openai"  # "openai" | "doubao" | "mock"
+    embedding_provider: str = "openai"  # "openai" | "doubao" | "openrouter" | "mock"
     openai_api_key: str = ""
     openai_embedding_model: str = "text-embedding-3-small"
-    embedding_dimensions: int = 1536
+    embedding_dimensions: int = 1024  # Qwen3: 1024, OpenAI: 1536
+
+    # OpenRouter (OpenAI-compatible, supports Qwen3 embedding etc.)
+    openrouter_api_key: str = ""
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_embedding_model: str = "qwen/qwen3-embedding-0.6b"
 
     # Doubao (Volces/ByteDance) Embedding
     doubao_api_key: str = ""
