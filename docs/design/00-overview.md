@@ -316,6 +316,5 @@ Knowledge Matures ──→ VerificationEngine ──→ Merge Gate → main bra
 | [11 — Integration Layer](11-integration-layer.md) | MCP, REST API, Hooks, CLI |
 | [12 — Auth & Security](12-auth-security.md) | Authentication, isolation, security model |
 | [13 — Knowledge Evolution](13-knowledge-evolution.md) | Full pipeline from observation to reuse |
-| [14 — Dashboard](14-dashboard.md) | Frontend architecture |
 | [15 — Testing Strategy](15-testing-strategy.md) | E2E, acceptance, unit testing |
 | [16 — Open Questions](16-open-questions.md) | Discussion topics and future directions |

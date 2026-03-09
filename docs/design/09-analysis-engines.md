@@ -153,7 +153,7 @@ Scores can come from multiple sources:
 
 `get_score_summary()` computes per-dimension aggregates:
 - Average, min, max, count across all scores for a target
-- Useful for dashboards and trend analysis
+- Useful for reporting and trend analysis
 
 ### Entry Points
 
@@ -171,6 +171,6 @@ Scores can come from multiple sources:
 1. **Scoring bias**: Different LLMs score differently. How to normalize across models?
 2. **Score reliability**: LLM scores can be noisy. Should we require multiple rounds?
 3. **Automated scoring triggers**: Should every conversation be automatically scored on completion?
-4. **Diff visualization**: The semantic diff produces rich data. How best to visualize it in the dashboard?
+4. **Diff visualization**: The semantic diff produces rich data. How best to visualize it in client tooling?
 5. **Cost management**: LLM-based scoring and semantic diff (embedding) have API costs. Budget controls?
 6. **Custom dimensions**: Allow users to define project-specific scoring dimensions?

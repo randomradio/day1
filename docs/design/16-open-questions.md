@@ -244,7 +244,7 @@ The ReplayEngine supports individual conversation replay. For batch evaluation:
 
 - **Corpus selection**: Which conversations to replay? All? Filtered by score? By task type?
 - **Parameterized replay**: Same conversation with different models, temperatures, system prompts
-- **Scoring aggregation**: Per-task, per-agent, per-model scoring dashboards
+- **Scoring aggregation**: Per-task, per-agent, per-model scoring reports
 - **Regression detection**: Alert when a conversation that previously scored high now scores low
 - **A/B testing**: Compare two agent configurations on the same conversation corpus
 
@@ -353,7 +353,7 @@ Currently, Day1 uses Python logging. For production observability:
 
 ### 4.4 Conflict Resolution UI
 
-**Question**: How should the dashboard visualize and resolve merge conflicts?
+**Question**: How should clients visualize and resolve merge conflicts?
 
 When merging branches with conflicting facts, the current MergeEngine uses automatic strategies (skip or accept). But some conflicts need human judgment:
 

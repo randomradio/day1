@@ -1,66 +1,29 @@
-# ──────────────────────────────────────────────
-# Stage 1: Build the React dashboard
-# ──────────────────────────────────────────────
-FROM node:22-slim AS dashboard-build
+# Day1 backend containers (Go backend only)
 
-WORKDIR /app/dashboard
-COPY dashboard/package.json dashboard/package-lock.json* ./
-RUN npm ci
-COPY dashboard/ ./
-RUN npm run build
-
-
-# ──────────────────────────────────────────────
-# Stage 2: Python backend (target: api)
-# ──────────────────────────────────────────────
-FROM python:3.11-slim AS api
-
-# Install system deps and uv
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc libffi-dev && \
-    rm -rf /var/lib/apt/lists/* && \
-    python -m pip install --no-cache-dir uv
-
-ENV UV_COMPILE_BYTECODE=1 \
-    UV_LINK_MODE=copy \
-    PYTHONUNBUFFERED=1
-
+FROM golang:1.24 AS go-base
 WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
 
-# Copy metadata files FIRST (needed for hatchling to read pyproject.toml)
-COPY README.md ./
-COPY pyproject.toml ./
+FROM go-base AS api-builder
+COPY cmd ./cmd
+COPY internal ./internal
+RUN CGO_ENABLED=0 GOOS=linux go build -o /out/day1-api ./cmd/day1-api && \
+    CGO_ENABLED=0 GOOS=linux go build -o /out/day1 ./cmd/day1
 
-# Install dependencies with uv (fast!)
-RUN uv pip install --system ".[matrixone]"
+FROM debian:bookworm-slim AS api
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates curl && \
+    rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=api-builder /out/day1-api /usr/local/bin/day1-api
+COPY --from=api-builder /out/day1 /usr/local/bin/day1
+EXPOSE 9821
+HEALTHCHECK --interval=15s --timeout=3s --start-period=8s --retries=3 \
+    CMD curl -fsS http://localhost:9821/health >/dev/null || exit 1
+CMD ["day1-api"]
 
-# Copy source and install package in editable mode for dev
-COPY src/ ./src/
-COPY scripts/ ./scripts/
-COPY .env.example ./.env.example
-
-RUN uv pip install --system -e .
-
-ENV BM_HOST=0.0.0.0 \
-    BM_PORT=8000 \
-    BM_EMBEDDING_PROVIDER=mock \
-    BM_LOG_LEVEL=DEBUG \
-    BM_LOG_FORMAT=text
-
-EXPOSE 8000
-
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
-
-CMD ["uvicorn", "day1.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
-
-
-# ──────────────────────────────────────────────
-# Stage 3: Nginx dashboard + reverse proxy (target: dashboard)
-# ──────────────────────────────────────────────
-FROM nginx:alpine AS dashboard
-
-COPY --from=dashboard-build /app/dashboard/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-
-EXPOSE 80
+FROM go-base AS api-dev
+COPY . .
+EXPOSE 9821
+CMD ["go", "run", "./cmd/day1-api"]

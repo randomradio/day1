@@ -1,171 +1,72 @@
-# Development Commands
-
-Commands for setting up, running, and testing Day1. Read this when setting up env or running builds/tests.
+# Development
 
 ## Prerequisites
 
-- Python 3.11+
-- [uv](https://docs.astral.sh/uv/) (package manager)
-- Node.js 18+ (for dashboard)
+- Go 1.24+
+- Docker + Docker Compose (optional)
+- MatrixOne/MySQL-compatible database (optional, only if using SQL persistence)
 
-## Environment Setup
+## Environment
 
 ```bash
-# Clone and navigate
-git clone git@github.com:randomradio/day1.git
-cd day1
-
-# Install all dependencies (creates .venv automatically)
-uv sync --all-extras
+cp .env.example .env
 ```
 
-## MatrixOne Database
+Important env vars:
 
-### Option A: MO Cloud (Default)
+- `BM_PORT` (default `9821`)
+- `BM_DATABASE_URL` (empty = in-memory backend)
+- `BM_EMBEDDING_PROVIDER` / `BM_LLM_PROVIDER` and related BYOK keys
 
-The default connection is pre-configured in `config.py`. No env vars needed to get started.
+## Run API and CLI
 
 ```bash
-# Verify MO features (uses default connection)
-uv run python scripts/test_mo_features.py
+# API server
+go run ./cmd/day1-api
 
-# Or connect directly via mycli/mysql for debugging
-mycli -h freetier-01.cn-hangzhou.cluster.matrixonecloud.cn -P 6001 \
-  -u "0193bd50-818d-76ba-bb43-a2abd031d6e5:admin:accountadmin" \
-  -p"AIcon2024" day1
-
-# Override connection via env var if needed
-export BM_DATABASE_URL="mysql+aiomysql://0193bd50-818d-76ba-bb43-a2abd031d6e5%3Aadmin%3Aaccountadmin:AIcon2024@freetier-01.cn-hangzhou.cluster.matrixonecloud.cn:6001/day1"
+# CLI
+go run ./cmd/day1 help
+go run ./cmd/day1 health
 ```
 
-### Option B: Local Docker
+## SQL persistence check
 
 ```bash
-# Start MatrixOne (Docker)
-docker run -d -p 6001:6001 --name matrixone matrixorigin/matrixone:latest
+# No-op when BM_DATABASE_URL is not set
+bash scripts/check_db.sh
 
-# Wait for MatrixOne to be ready
-docker logs -f matrixone
-
-# Set connection string (local)
-export BM_DATABASE_URL="mysql+aiomysql://root:111@127.0.0.1:6001/day1"
-
-# Connect directly (for debugging)
-docker exec -it matrixone mysql -h 127.0.0.1 -P 6001 -uroot -p111
+# Explicit schema bootstrap
+go run ./cmd/day1 migrate
 ```
 
-## Quick Start (run.sh)
+## Test and build
 
 ```bash
-# One-command: install + test MO + start API + start dashboard
-bash scripts/run.sh all
-
-# Or run individual commands:
-bash scripts/run.sh install     # uv sync --all-extras
-bash scripts/run.sh test        # Verify MO connection & features
-bash scripts/run.sh api         # Start FastAPI server (:8000)
-bash scripts/run.sh dashboard   # Start React dashboard (:5173)
+go test ./...
+go build ./...
 ```
 
-## Running Services (Manual)
+## Docker Compose
 
 ```bash
-# FastAPI REST API
-uv run uvicorn day1.api.app:app --reload --port 8000
+# Dev profile (Go API)
+docker compose --profile dev up -d
 
-# FastAPI with debug
-uv run uvicorn day1.api.app:app --reload --port 8000 --log-level debug
+# Optional local MatrixOne from compose
+docker compose --profile dev --profile matrixone up -d
 
-# MCP HTTP endpoint (mounted in FastAPI app)
-# Start the API, then connect clients to http://127.0.0.1:8000/mcp
-uv run uvicorn day1.api.app:app --reload --port 8000
+# Validate config
+docker compose config
 ```
 
-## Dashboard (Frontend)
+## MCP endpoint
+
+When API is running, MCP endpoint is:
+
+- `http://localhost:9821/mcp`
+
+Configure Claude Code:
 
 ```bash
-# Install and start dashboard dev server
-cd dashboard
-npm install
-npm run dev     # http://localhost:5173 (proxies /api to :8000)
-
-# Build for production
-npm run build
-
-# Type check
-npx tsc --noEmit
-```
-
-## Database Operations
-
-```bash
-# Verify MO features (branch/diff/merge/vector/fulltext/time-travel)
-uv run python scripts/test_mo_features.py
-
-# Run migrations
-uv run python -m scripts.migrate
-
-# Create snapshot (native MO)
-curl -X POST http://localhost:8000/api/v1/snapshots -H 'Content-Type: application/json' -d '{"native": true, "label": "before-refactor"}'
-```
-
-## Testing
-
-```bash
-# Run all tests (requires MO connection)
-uv run pytest
-
-# Run specific test
-uv run pytest tests/test_core/test_fact_engine.py
-
-# Run with coverage
-uv run pytest --cov=src --cov-report=html --cov-report=term
-
-# Run only fast tests (skip integration)
-uv run pytest -m "not integration"
-
-# Run only integration tests
-uv run pytest -m integration
-
-# Use a specific MO connection for tests
-BM_TEST_DATABASE_URL="mysql+aiomysql://root:111@localhost:6001/day1_test" uv run pytest
-```
-
-## Linting & Type Checking
-
-```bash
-# Type check
-uv run mypy src
-
-# Lint check
-uv run ruff check src
-
-# Auto-fix lint issues
-uv run ruff check --fix src
-
-# Format code
-uv run black src tests
-
-# Format check only (don't write)
-uv run black --check src tests
-```
-
-## Adding Dependencies
-
-```bash
-# Add a runtime dependency
-uv add <package>
-
-# Add a dev dependency
-uv add --group dev <package>
-
-# Remove a dependency
-uv remove <package>
-```
-
-## Useful Combinations
-
-```bash
-# Full check before commit (format + lint + type + test)
-uv run black src tests && uv run ruff check src && uv run mypy src && uv run pytest
+claude mcp add --scope project --transport http day1 http://localhost:9821/mcp
 ```

@@ -42,7 +42,7 @@
 export BM_DATABASE_URL='mysql+aiomysql://root:111@127.0.0.1:6001/day1'
 export BM_TEST_DATABASE_URL='mysql+aiomysql://root:111@127.0.0.1:6001/day1'
 export BM_EMBEDDING_PROVIDER=mock BM_RATE_LIMIT=0 BM_LOG_LEVEL=CRITICAL
-uv run python scripts/e2e_surface.py --output docs/e2e_surface_latest_report.json
+go test ./... && go build ./... && go run ./cmd/day1-api
 ```
 
 The runner starts a local API instance and tests MCP via HTTP (`/mcp`) using the official Python MCP client (no direct in-process dispatch fallback).

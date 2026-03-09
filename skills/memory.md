@@ -2,7 +2,7 @@
 
 MCP 配置（`.mcp.json`）：
 ```json
-{ "mcpServers": { "day1": { "type": "http", "url": "http://127.0.0.1:9903/mcp" } } }
+{ "mcpServers": { "day1": { "type": "http", "url": "http://localhost:9821/mcp" } } }
 ```
 
 工作时用以下工具维护跨 session 上下文。自然语言写入，自然语言搜索。

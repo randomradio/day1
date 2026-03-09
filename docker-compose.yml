@@ -1,44 +1,56 @@
+################################################################################
+# Day1 Docker Compose (Go backend)
+#
+# Usage:
+#   docker compose --profile dev up -d
+#   docker compose --profile prod up -d
+#   docker compose --profile dev --profile matrixone up -d
+#
+# DB behavior:
+#   - If BM_DATABASE_URL is set in system env or .env, it is used as-is.
+#   - Otherwise, service-specific fallback URLs are used (port 6001).
+#   - Local MatrixOne is optional via profile "matrixone".
+################################################################################
+
 services:
-  # ── MatrixOne (local dev database) ────────────────────────
   matrixone:
     image: matrixorigin/matrixone:latest
+    container_name: day1-matrixone
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MATRIXONE_ROOT_PASSWORD:-111}
     ports:
       - "6001:6001"
-    volumes:
-      - mo_data:/mo-data
-    environment:
-      - MYSQL_ROOT_PASSWORD=day1
-    # No healthcheck - MatrixOne takes time to start and is available when port 6001 is open
-    # API service waits for port to be available
+    restart: unless-stopped
+    profiles: ["matrixone"]
 
-  # ── FastAPI backend ───────────────────────────────────────
   api:
     build:
       context: .
       target: api
     ports:
-      - "9903:8000"
+      - "9821:9821"
     env_file:
       - .env
     environment:
-      # Override DB URL to point to the local MatrixOne container
-      # MatrixOne 2.0 default: root/111, use 'day1' as default db
-      - BM_DATABASE_URL=mysql+aiomysql://root:111@matrixone:6001/day1
-      - BM_HOST=0.0.0.0
-    depends_on:
-      - matrixone
+      BM_DATABASE_URL: ${BM_DATABASE_URL:-mysql+aiomysql://root:111@host.docker.internal:6001/day1}
+      BM_PORT: "9821"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
+    profiles: ["prod"]
 
-  # ── Nginx: serves dashboard + proxies /api ────────────────
-  dashboard:
+  api-dev:
     build:
       context: .
-      target: dashboard
-    ports:
-      - "9904:80"
-    depends_on:
-      - api
+      target: api-dev
+    network_mode: host
+    env_file:
+      - .env
+    environment:
+      BM_DATABASE_URL: ${BM_DATABASE_URL:-mysql+aiomysql://root:111@127.0.0.1:6001/day1}
+      BM_PORT: "${BM_PORT:-9821}"
+    volumes:
+      - ./:/app
+    command: ["go", "run", "./cmd/day1-api"]
     restart: unless-stopped
-
-volumes:
-  mo_data:
+    profiles: ["dev"]

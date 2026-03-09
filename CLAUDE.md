@@ -15,11 +15,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Language | Python 3.11+ |
 | Framework | FastAPI (async, type-safe) |
 | Database | SQLAlchemy 2.0 (async) + aiomysql |
-| Storage | MatrixOne (Cloud/Docker) — vecf32 + FULLTEXT INDEX + git4data (DATA BRANCH) + PITR |
+| Storage | MatrixOne (Cloud/Docker) — vecf32 + FULLTEXT INDEX |
 | MCP Server | `mcp` (official Python SDK) |
-| LLM | Claude API (Anthropic SDK) |
-| Embedding | OpenAI text-embedding-3-small |
-| Frontend | React + Vite + React Flow + D3.js + Zustand + Tailwind CSS |
+| Embedding | OpenAI text-embedding-3-small (configurable: openai/doubao/openrouter/mock) |
+| Frontend | React + Vite + Zustand + Tailwind CSS |
 
 ## MCP Transport (Current)
 
@@ -29,17 +28,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Core Data Model
 
 ```
-Layer 2 (Memory):   facts, relations, observations    — structured knowledge with vector embeddings
-Layer 1 (History):  conversations, messages            — raw chat history with sequence ordering
-Metadata:           branch_registry, merge_history     — branch lifecycle tracking
-Coordination:       sessions, tasks, task_agents       — multi-agent task management
-Templates:          template_branches                  — reusable knowledge template registry
-Curation:           handoff_records, knowledge_bundles — verified handoffs and portable packages
-Evaluation:         scores, consolidation_history      — quality scoring and audit
-Time Travel:        snapshots                          — point-in-time recovery
+Memory:       memories, memory_relations         — NL text + vector embeddings + knowledge graph
+Branch:       branches, snapshots                — branch registry + point-in-time recovery
+Sessions:     sessions, hook_logs                — session tracking + raw Claude Code events
+Traces:       session_traces, trace_comparisons  — execution traces + scored diffs
+Skills:       skill_registry, skill_mutations, evolution_runs — versioned skills + evolution
 ```
 
-All 5 core tables (`facts`, `relations`, `observations`, `conversations`, `messages`) participate in DATA BRANCH operations. Feature branches use suffixed tables (e.g. `facts_feature_x`) created via `DATA BRANCH CREATE TABLE`.
+All tables use column-level branching (`branch_name` column). 11 tables total.
 
 ## Progressive Disclosure
 
@@ -52,7 +48,8 @@ All 5 core tables (`facts`, `relations`, `observations`, `conversations`, `messa
 | `docs/architecture.md` | Understanding system design, integration points |
 | `docs/architecture-decisions.md` | Architecture decisions, discussion log, evolution plans |
 | `docs/mcp_tools.md` | Adding/modifying MCP server tools |
-| `docs/dashboard.md` | Building/working on frontend dashboard |
+| `docs/api_reference.md` | REST API endpoints reference |
+| `docs/hooks.md` | Claude Code hooks integration |
 | `docs/E2E_TEST_METHODS.md` | Strict API/CLI/MCP E2E method, latest coverage report summary, and warn explanations |
 | `docs/E2E_REAL_ACCEPTANCE.md` | Valid-input real acceptance run guide, DB verification manifest, and concrete SQL checks |
 
@@ -60,36 +57,16 @@ All 5 core tables (`facts`, `relations`, `observations`, `conversations`, `messa
 
 Unlike `claude-mem`, Day1 adds: branch/merge, PITR/time-travel, multi-agent isolation, knowledge graph.
 
-## Engine Architecture (26 Core Engines)
+## Engine Architecture (4 Core Engines)
 
-| Category | Engines | LLM Dependency |
-|----------|---------|----------------|
-| Write | FactEngine, MessageEngine, ObservationEngine, RelationEngine | None (embedding only) |
-| Query | SearchEngine, AnalyticsEngine, SessionManager | None |
-| Branch | BranchManager, MergeEngine, SnapshotManager, BranchTopologyEngine | None |
-| Conversation | ConversationEngine, CherryPick, ReplayEngine | None |
-| Task | TaskEngine, ConsolidationEngine | None |
-| Templates | TemplateEngine | None |
-| Curation | **VerificationEngine**, **HandoffEngine**, **KnowledgeBundleEngine** | VerificationEngine only |
-| Analysis | SemanticDiffEngine, ScoringEngine | ScoringEngine only |
-| Infrastructure | EmbeddingProvider, LLMClient | By design |
+| Engine | Responsibility | LLM? | Embedding? |
+|--------|---------------|------|------------|
+| `MemoryEngine` | Write, search, branch, snapshot, merge, graph | No | Yes |
+| `TraceEngine` | Extract/store session traces | No | No |
+| `ComparisonEngine` | Compare traces (9 dimensions) | Heuristic | No |
+| `SkillEvolutionEngine` | Register, evolve, promote skills | No | No |
 
-**Pure memory layer principle**: Only 2 of 26 engines (ScoringEngine and VerificationEngine) call LLM directly. Both degrade gracefully to heuristic scoring. All others are transport-agnostic.
-
-## Architecture Evolution
-
-Active decisions and roadmap are tracked in `docs/architecture-decisions.md`.
-
-Implemented (2026-02-24):
-- **Branch Topology Management** — BranchTopologyEngine: lifecycle policies, auto-archive, TTL expiry, metadata enrichment, hierarchical tree, naming validation
-- **Template Branches** — TemplateEngine + TemplateBranch model: create/version/instantiate/find templates, fork-to-start for new agents
-- **Knowledge Curation** — VerificationEngine (LLM-as-judge for facts, merge gate), HandoffEngine (structured task handoff with verified facts), KnowledgeBundleEngine (portable export/import)
-
-Knowledge evolution chain: `Raw Execution → Consolidation → Verification → Curation → Template/Bundle → Reuse`
-
----
-
-**Full design document**: `branched-memory-v2-pure-memory-layer.md`
+**Pure memory layer principle**: No engine calls LLM directly. Embedding is the only external dependency, and it degrades gracefully (mock provider available).
 
 ---
 
@@ -101,23 +78,28 @@ This project uses Day1 (Day1 v2) MCP tools for persistent memory across sessions
 
 Every Claude Code session is tracked with a unique `session_id`. Memory operations happen automatically:
 
-- **Session facts** are stored via `memory_write_fact`
-- **Tool observations** are captured via `memory_write_observation`
+- **Memories** are stored via `memory_write`
 - **Semantic search** retrieves relevant context via `memory_search`
+- **Session events** are captured via Claude Code hooks (see `docs/hooks.md`)
 
-### Key MCP Memory Tools
+### Key MCP Memory Tools (28 total)
 
 Use these during work:
 
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
-| `memory_write_fact` | Store structured facts | After learning decisions, patterns, bugs |
+| `memory_write` | Store a memory (text + context) | After learning decisions, patterns, bugs |
 | `memory_search` | Semantic + keyword search | Before starting work, to find context |
-| `memory_graph_query` | Query entity relationships | Exploring connections between components |
+| `memory_get` | Get memory by ID | When you need full details |
+| `memory_update` | Update memory (re-embeds if text changes) | Correcting or enriching a memory |
+| `memory_archive` | Soft-delete a memory | Removing outdated/wrong memories |
 | `memory_branch_create` | Create isolated branch | Before experimental changes |
 | `memory_branch_switch` | Switch branches | Working on different features |
 | `memory_snapshot` | Point-in-time snapshot | Before risky changes |
+| `memory_relate` | Create relation between memories | Building knowledge graph |
+| `memory_graph` | Graph traversal from a memory | Exploring connected knowledge |
 | `memory_timeline` | Chronological history | Reviewing session activity |
+| `memory_count` | Count memories on a branch | Quick branch overview |
 
 ### Initialization
 
@@ -139,8 +121,9 @@ Use memory_search with query describing your task
 
 ```
 # Store for future reference
-Use memory_write_fact with:
-- fact_text: Clear description
+Use memory_write with:
+- text: Clear description of what happened
+- context: Why / how / outcome
 - category: "pattern" | "decision" | "bug_fix" | "architecture"
 - confidence: 0.0-1.0
 ```

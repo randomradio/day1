@@ -249,7 +249,6 @@ day1
 │   ├── list                   # SnapshotManager
 │   └── restore <id>           # SnapshotManager
 ├── api [--host] [--port]      # Start FastAPI server
-├── dashboard                  # Start React dashboard
 ├── migrate                    # Run DB migrations
 ├── init                       # Initialize DB + main branch
 ├── health                     # Check API health
@@ -294,5 +293,5 @@ Complete mapping from every integration surface to every engine:
 1. **MCP tool count**: Currently 8 NL-first tools. The full API has 85+ endpoints. Which additional operations should be exposed as MCP tools?
 2. **Hook performance**: Hooks are subprocesses — each invocation has startup cost. Can we batch or optimize?
 3. **API versioning**: Currently all routes are unversioned. Should we add `/api/v1/` prefix?
-4. **WebSocket/SSE**: Dashboard currently polls API. Should we add real-time push for live updates?
-5. **GraphQL**: Would a GraphQL endpoint serve the dashboard better than REST for complex queries?
+4. **WebSocket/SSE**: Clients currently poll API. Should we add real-time push for live updates?
+5. **GraphQL**: Would a GraphQL endpoint serve complex clients better than REST for complex queries?

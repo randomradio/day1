@@ -16,9 +16,6 @@ htmlcov
 .mypy_cache
 .ruff_cache
 
-# Node
-dashboard/node_modules
-
 # IDE
 .idea
 .vscode

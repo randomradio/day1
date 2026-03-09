@@ -187,7 +187,7 @@ Gaps 5 and 6 are addressed by the Phase 1 implementation plan (Branch Topology +
 
 **Design**: Complete in `docs/phase5-task-handoff-and-curation.md`
 
-**Status**: Implemented (2026-02-24). All three engines created with full API, MCP tools, dashboard, and tests.
+**Status**: Implemented (2026-02-24). All three engines created with full API, MCP tools, and tests.
 
 | Capability | Implementation | Files |
 |-----------|---------------|-------|

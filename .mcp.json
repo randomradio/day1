@@ -2,7 +2,7 @@
   "mcpServers": {
     "day1": {
       "type": "http",
-      "url": "http://127.0.0.1:9903/mcp"
+      "url": "http://localhost:9821/mcp"
     }
   }
 }

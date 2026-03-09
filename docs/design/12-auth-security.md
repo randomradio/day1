@@ -118,7 +118,7 @@ Each MCP session maintains its own active branch:
 | Brute force attacks | Rate limiting | No account lockout |
 | Cross-branch data leakage | Table-level isolation | Non-branched tables shared |
 | SQL injection | SQLAlchemy ORM | Raw SQL in analytics (text()) |
-| XSS in dashboard | React escaping | Need CSP headers |
+| XSS in web clients | React escaping | Need CSP headers |
 | Data at rest | None | MatrixOne default encryption |
 | Data in transit | HTTPS (via nginx) | Need TLS config |
 | Secret exposure | Environment variables | No vault integration |
