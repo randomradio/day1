@@ -26,8 +26,8 @@ Clients (REST / MCP / hooks)
 
 ## Storage mode
 
-- `BM_DATABASE_URL` set: SQL persistence (`memories`, `branches`, `snapshots`, `memory_relations`, plus metadata tables)
-- `BM_DATABASE_URL` unset: in-memory backend
+- `DAY1_DATABASE_URL` set: SQL persistence (`memories`, `branches`, `snapshots`, `memory_relations`, plus metadata tables)
+- `DAY1_DATABASE_URL` unset: in-memory backend
 
 ## Memory-kernel primitives
 
@@ -47,10 +47,10 @@ MCP is exposed at `/mcp` and mirrors kernel operations through tool handlers in 
 
 Embedding:
 
-- `BM_EMBEDDING_PROVIDER=mock|openai|openrouter|custom|doubao`
+- `DAY1_EMBEDDING_PROVIDER=mock|openai|openrouter|custom|doubao`
 - Provider-specific API keys and base URLs are validated at startup.
 
 LLM:
 
-- `BM_LLM_PROVIDER=mock|openai|anthropic|custom`
+- `DAY1_LLM_PROVIDER=mock|openai|anthropic|custom`
 - Provider-specific API keys and base URLs are validated at startup.

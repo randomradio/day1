@@ -3,12 +3,12 @@ set -euo pipefail
 
 MODE="${1:-all}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-API_PORT="${BM_PORT:-9821}"
+API_PORT="${DAY1_PORT:-9821}"
 
 start_api() {
   echo "[day1] starting go api on http://0.0.0.0:${API_PORT}"
   cd "$ROOT"
-  exec env BM_PORT="${API_PORT}" go run ./cmd/day1-api
+  exec env DAY1_PORT="${API_PORT}" go run ./cmd/day1-api
 }
 
 start_all() {

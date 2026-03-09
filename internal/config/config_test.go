@@ -6,8 +6,8 @@ import (
 )
 
 func TestValidateBYOKMockPasses(t *testing.T) {
-	t.Setenv("BM_EMBEDDING_PROVIDER", "mock")
-	t.Setenv("BM_LLM_PROVIDER", "mock")
+	t.Setenv("DAY1_EMBEDDING_PROVIDER", "mock")
+	t.Setenv("DAY1_LLM_PROVIDER", "mock")
 	cfg := LoadFromEnv()
 	if err := cfg.ValidateBYOK(); err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -15,27 +15,27 @@ func TestValidateBYOKMockPasses(t *testing.T) {
 }
 
 func TestValidateBYOKOpenAIEmbeddingRequiresKey(t *testing.T) {
-	unset(t, "BM_OPENAI_API_KEY")
-	t.Setenv("BM_EMBEDDING_PROVIDER", "openai")
-	t.Setenv("BM_LLM_PROVIDER", "mock")
+	unset(t, "DAY1_OPENAI_API_KEY")
+	t.Setenv("DAY1_EMBEDDING_PROVIDER", "openai")
+	t.Setenv("DAY1_LLM_PROVIDER", "mock")
 	cfg := LoadFromEnv()
 	if err := cfg.ValidateBYOK(); err == nil {
-		t.Fatalf("expected validation error for missing BM_OPENAI_API_KEY")
+		t.Fatalf("expected validation error for missing DAY1_OPENAI_API_KEY")
 	}
 }
 
 func TestValidateBYOKCustomLLMRequiresKeyAndURL(t *testing.T) {
-	unset(t, "BM_LLM_API_KEY")
-	unset(t, "BM_LLM_BASE_URL")
-	t.Setenv("BM_EMBEDDING_PROVIDER", "mock")
-	t.Setenv("BM_LLM_PROVIDER", "custom")
+	unset(t, "DAY1_LLM_API_KEY")
+	unset(t, "DAY1_LLM_BASE_URL")
+	t.Setenv("DAY1_EMBEDDING_PROVIDER", "mock")
+	t.Setenv("DAY1_LLM_PROVIDER", "custom")
 	cfg := LoadFromEnv()
 	if err := cfg.ValidateBYOK(); err == nil {
 		t.Fatalf("expected validation error for missing custom llm credentials")
 	}
 
-	t.Setenv("BM_LLM_API_KEY", "k")
-	t.Setenv("BM_LLM_BASE_URL", "https://example.com/v1")
+	t.Setenv("DAY1_LLM_API_KEY", "k")
+	t.Setenv("DAY1_LLM_BASE_URL", "https://example.com/v1")
 	cfg = LoadFromEnv()
 	if err := cfg.ValidateBYOK(); err != nil {
 		t.Fatalf("expected no error after setting values, got %v", err)

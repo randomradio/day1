@@ -120,10 +120,10 @@ console = Console()
 
 @click.group()
 @click.version_option("0.1.0")
-@click.option("--database-url", envvar="BM_DATABASE_URL", help="Database URL")
-@click.option("--branch", envvar="BM_BRANCH", default="main", help="Default branch")
-@click.option("--session-id", envvar="BM_SESSION_ID", help="Session ID")
-@click.option("--agent-id", envvar="BM_AGENT_ID", help="Agent ID")
+@click.option("--database-url", envvar="DAY1_DATABASE_URL", help="Database URL")
+@click.option("--branch", envvar="DAY1_BRANCH", default="main", help="Default branch")
+@click.option("--session-id", envvar="DAY1_SESSION_ID", help="Session ID")
+@click.option("--agent-id", envvar="DAY1_AGENT_ID", help="Agent ID")
 @click.pass_context
 def cli(ctx, database_url, branch, session_id, agent_id):
     """Day1 Memory Layer - Git-like memory for AI agents"""
@@ -309,9 +309,9 @@ def list_branches(ctx, status):
 @click.pass_context
 def switch_branch(ctx, name):
     """Switch active branch (sets environment variable hint)"""
-    console.print(f"export BM_BRANCH={name}")
+    console.print(f"export DAY1_BRANCH={name}")
     console.print(f"# Add to your shell profile or run:")
-    console.print(f"export BM_BRANCH={name}")
+    console.print(f"export DAY1_BRANCH={name}")
 
 
 # ─────────────────────────────────────────────────────────────

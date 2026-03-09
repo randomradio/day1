@@ -90,7 +90,7 @@ Status progression: `todo → active → done | blocked`
 - Key facts from the task branch
 - Progress metrics (done/active/todo counts)
 
-This is injected by the `SessionStart` hook when `BM_TASK_ID` is set.
+This is injected by the `SessionStart` hook when `DAY1_TASK_ID` is set.
 
 ### Entry Points
 
@@ -101,7 +101,7 @@ This is injected by the `SessionStart` hook when `BM_TASK_ID` is set.
 | **API** | `POST /tasks/{id}/agents/{agent_id}/complete` | `complete_agent()` |
 | **API** | `PATCH /tasks/{id}/objectives/{obj_id}` | `update_objective()` |
 | **API** | `POST /tasks/{id}/complete` | `complete_task()` |
-| **Hook** | SessionStart (with BM_TASK_ID) | `get_task_context()` |
+| **Hook** | SessionStart (with DAY1_TASK_ID) | `get_task_context()` |
 
 ---
 

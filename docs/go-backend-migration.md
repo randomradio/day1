@@ -21,8 +21,8 @@ Excluded from rewrite:
 
 ## Persistence backend
 
-- `BM_DATABASE_URL` enables MatrixOne/MySQL-compatible SQL persistence.
-- Without `BM_DATABASE_URL`, the service runs with in-memory state.
+- `DAY1_DATABASE_URL` enables MatrixOne/MySQL-compatible SQL persistence.
+- Without `DAY1_DATABASE_URL`, the service runs with in-memory state.
 - SQL backend bootstraps required tables for:
   - `memories`
   - `branches`
@@ -48,25 +48,25 @@ The kernel contract is centered in `internal/kernel` and includes:
 
 Embedding providers:
 
-- `BM_EMBEDDING_PROVIDER=mock|openai|openrouter|custom|doubao`
-- `BM_OPENAI_API_KEY` (required for `openai`)
-- `BM_OPENROUTER_API_KEY` (required for `openrouter`)
-- `BM_EMBEDDING_API_KEY` + `BM_EMBEDDING_BASE_URL` (required for `custom`)
-- `BM_DOUBAO_API_KEY` (required for `doubao`)
+- `DAY1_EMBEDDING_PROVIDER=mock|openai|openrouter|custom|doubao`
+- `DAY1_OPENAI_API_KEY` (required for `openai`)
+- `DAY1_OPENROUTER_API_KEY` (required for `openrouter`)
+- `DAY1_EMBEDDING_API_KEY` + `DAY1_EMBEDDING_BASE_URL` (required for `custom`)
+- `DAY1_DOUBAO_API_KEY` (required for `doubao`)
 
 LLM providers:
 
-- `BM_LLM_PROVIDER=mock|openai|anthropic|custom`
-- `BM_OPENAI_API_KEY` (required for `openai`)
-- `BM_ANTHROPIC_API_KEY` (required for `anthropic`)
-- `BM_LLM_API_KEY` + `BM_LLM_BASE_URL` (required for `custom`)
+- `DAY1_LLM_PROVIDER=mock|openai|anthropic|custom`
+- `DAY1_OPENAI_API_KEY` (required for `openai`)
+- `DAY1_ANTHROPIC_API_KEY` (required for `anthropic`)
+- `DAY1_LLM_API_KEY` + `DAY1_LLM_BASE_URL` (required for `custom`)
 
 Common:
 
-- `BM_PORT` (default `9821`)
-- `BM_EMBEDDING_MODEL`
-- `BM_EMBEDDING_DIMENSIONS`
-- `BM_LLM_MODEL`
+- `DAY1_PORT` (default `9821`)
+- `DAY1_EMBEDDING_MODEL`
+- `DAY1_EMBEDDING_DIMENSIONS`
+- `DAY1_LLM_MODEL`
 
 ## API compatibility status
 
@@ -109,4 +109,4 @@ MCP tool names are registered in `internal/mcp/registry.go`.
   - branch/snapshot/merge: `branch`, `snapshot`, `merge`
 - CLI routes operations through the Go API/MCP wrappers for parity-oriented behavior.
 - `test` runs `go test ./...` and propagates the underlying exit code.
-- `migrate` and `init` bootstrap both kernel and API metadata SQL schemas when `BM_DATABASE_URL` is set.
+- `migrate` and `init` bootstrap both kernel and API metadata SQL schemas when `DAY1_DATABASE_URL` is set.

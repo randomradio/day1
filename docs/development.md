@@ -14,9 +14,9 @@ cp .env.example .env
 
 Important env vars:
 
-- `BM_PORT` (default `9821`)
-- `BM_DATABASE_URL` (empty = in-memory backend)
-- `BM_EMBEDDING_PROVIDER` / `BM_LLM_PROVIDER` and related BYOK keys
+- `DAY1_PORT` (default `9821`)
+- `DAY1_DATABASE_URL` (empty = in-memory backend)
+- `DAY1_EMBEDDING_PROVIDER` / `DAY1_LLM_PROVIDER` and related BYOK keys
 
 ## Run API and CLI
 
@@ -32,7 +32,7 @@ go run ./cmd/day1 health
 ## SQL persistence check
 
 ```bash
-# No-op when BM_DATABASE_URL is not set
+# No-op when DAY1_DATABASE_URL is not set
 bash scripts/check_db.sh
 
 # Explicit schema bootstrap

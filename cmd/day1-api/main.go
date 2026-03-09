@@ -48,7 +48,7 @@ func main() {
 		log.Printf("day1-go using SQL persistence backend")
 	} else {
 		memoryKernel = kernel.NewMemoryService(embedder, llmProvider)
-		log.Printf("day1-go using in-memory backend (set BM_DATABASE_URL for SQL persistence)")
+		log.Printf("day1-go using in-memory backend (set DAY1_DATABASE_URL for SQL persistence)")
 	}
 	registry := mcp.NewRegistry(memoryKernel)
 	var metadataStore api.MetadataStore

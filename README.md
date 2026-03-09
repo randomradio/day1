@@ -6,7 +6,7 @@ Git-like memory layer for agents with branch/snapshot/merge/search primitives, b
 
 - API entrypoint: `go run ./cmd/day1-api`
 - CLI entrypoint: `go run ./cmd/day1`
-- Database: optional via `BM_DATABASE_URL`
+- Database: optional via `DAY1_DATABASE_URL`
   - If unset, backend runs in-memory.
   - If set, backend persists to MatrixOne/MySQL-compatible SQL.
 
@@ -22,7 +22,7 @@ docker compose --profile dev up -d
 docker compose --profile dev --profile matrixone up -d
 ```
 
-`BM_DATABASE_URL` precedence:
+`DAY1_DATABASE_URL` precedence:
 
 1. System environment value
 2. `.env` value
@@ -42,7 +42,7 @@ Prereqs: Go 1.24+, optional MatrixOne.
 ```bash
 cp .env.example .env
 
-# Optional DB check (requires BM_DATABASE_URL)
+# Optional DB check (requires DAY1_DATABASE_URL)
 bash scripts/check_db.sh
 
 # Start API
@@ -61,18 +61,18 @@ go run ./cmd/day1-api
 
 Embedding provider:
 
-- `BM_EMBEDDING_PROVIDER=mock|openai|openrouter|custom|doubao`
-- `openai`: requires `BM_OPENAI_API_KEY`
-- `openrouter`: requires `BM_OPENROUTER_API_KEY`
-- `custom`: requires `BM_EMBEDDING_API_KEY` + `BM_EMBEDDING_BASE_URL`
-- `doubao`: requires `BM_DOUBAO_API_KEY`
+- `DAY1_EMBEDDING_PROVIDER=mock|openai|openrouter|custom|doubao`
+- `openai`: requires `DAY1_OPENAI_API_KEY`
+- `openrouter`: requires `DAY1_OPENROUTER_API_KEY`
+- `custom`: requires `DAY1_EMBEDDING_API_KEY` + `DAY1_EMBEDDING_BASE_URL`
+- `doubao`: requires `DAY1_DOUBAO_API_KEY`
 
 LLM provider:
 
-- `BM_LLM_PROVIDER=mock|openai|anthropic|custom`
-- `openai`: requires `BM_OPENAI_API_KEY`
-- `anthropic`: requires `BM_ANTHROPIC_API_KEY`
-- `custom`: requires `BM_LLM_API_KEY` + `BM_LLM_BASE_URL`
+- `DAY1_LLM_PROVIDER=mock|openai|anthropic|custom`
+- `openai`: requires `DAY1_OPENAI_API_KEY`
+- `anthropic`: requires `DAY1_ANTHROPIC_API_KEY`
+- `custom`: requires `DAY1_LLM_API_KEY` + `DAY1_LLM_BASE_URL`
 
 ## Docs
 

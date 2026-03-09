@@ -217,11 +217,11 @@ Each of the 26 engines has corresponding unit tests using `pytest` with async su
 
 | Setting | Value | Reason |
 |---|---|---|
-| `BM_EMBEDDING_PROVIDER` | `mock` | Deterministic, no external API calls |
-| `BM_RATE_LIMIT` | `0` | Disable rate limiting for test speed |
-| `BM_LOG_LEVEL` | `CRITICAL` | Quiet output during test runs |
-| `BM_DATABASE_URL` | MatrixOne (local) | Real database for integration tests |
-| `BM_TEST_DATABASE_URL` | MatrixOne (local) | Separate URL for test isolation |
+| `DAY1_EMBEDDING_PROVIDER` | `mock` | Deterministic, no external API calls |
+| `DAY1_RATE_LIMIT` | `0` | Disable rate limiting for test speed |
+| `DAY1_LOG_LEVEL` | `CRITICAL` | Quiet output during test runs |
+| `DAY1_DATABASE_URL` | MatrixOne (local) | Real database for integration tests |
+| `DAY1_TEST_DATABASE_URL` | MatrixOne (local) | Separate URL for test isolation |
 
 ### Key Test Categories
 

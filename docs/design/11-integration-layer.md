@@ -193,8 +193,8 @@ Hooks are shell scripts invoked by Claude Code at specific lifecycle events. The
 │                            [Consolidation]             │
 │                                                        │
 │  Environment Context:                                  │
-│  BM_BRANCH, BM_TASK_ID, BM_AGENT_ID,                 │
-│  BM_PARENT_SESSION, CLAUDE_CODE_SESSION_ID            │
+│  DAY1_BRANCH, DAY1_TASK_ID, DAY1_AGENT_ID,                 │
+│  DAY1_PARENT_SESSION, CLAUDE_CODE_SESSION_ID            │
 └──────────────────────────────────────────────────────┘
 ```
 
@@ -202,7 +202,7 @@ Hooks are shell scripts invoked by Claude Code at specific lifecycle events. The
 
 Hooks require **zero user configuration**:
 - Session ID from `CLAUDE_CODE_SESSION_ID` environment variable
-- Branch from `BM_BRANCH` (defaults to "main")
+- Branch from `DAY1_BRANCH` (defaults to "main")
 - Database connection from `.env` file
 - Embedding from configured provider (degrades to mock)
 

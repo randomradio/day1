@@ -28,7 +28,7 @@ Embeddings enable semantic search and similarity computation. The EmbeddingProvi
 │  $0.02/M  varies     $0 (testing)                 │
 │                                                    │
 │  Factory: get_embedding_provider()                │
-│  Configured via: BM_EMBEDDING_PROVIDER env var    │
+│  Configured via: DAY1_EMBEDDING_PROVIDER env var    │
 └──────────────────────────────────────────────────┘
 ```
 
@@ -38,7 +38,7 @@ Embeddings are **enrichment, not requirements**:
 - Every write engine catches embedding errors and logs a warning
 - The record is saved with `embedding = NULL`
 - Search degrades to keyword-only when embeddings are missing
-- This means the system is fully functional with `BM_EMBEDDING_PROVIDER=mock`
+- This means the system is fully functional with `DAY1_EMBEDDING_PROVIDER=mock`
 
 ### Helper Functions
 
@@ -122,31 +122,31 @@ Every API route and engine receives a session via this dependency.
 
 ### Environment Variables
 
-All configuration uses the `BM_` prefix:
+All configuration uses the `DAY1_` prefix:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `BM_DATABASE_URL` | `mysql+aiomysql://root:111@localhost:6001/day1` | MatrixOne connection |
-| `BM_EMBEDDING_PROVIDER` | `openai` | Embedding provider: openai, doubao, mock |
-| `BM_OPENAI_API_KEY` | (empty) | OpenAI API key for embeddings |
-| `BM_EMBEDDING_DIMENSIONS` | `1536` | Embedding vector dimensions |
-| `BM_LLM_API_KEY` | (empty) | LLM API key (for scoring/verification) |
-| `BM_LLM_BASE_URL` | (empty) | LLM API base URL |
-| `BM_API_KEY` | (empty) | API authentication key (empty = open access) |
-| `BM_RATE_LIMIT` | `60` | Requests per minute per IP |
-| `BM_HOST` | `127.0.0.1` | Server host |
-| `BM_PORT` | `8000` | Server port |
-| `BM_LOG_LEVEL` | `INFO` | Logging level |
-| `BM_BRANCH` | `main` | Default active branch |
-| `BM_TASK_ID` | (empty) | Task context for hooks |
-| `BM_AGENT_ID` | (empty) | Agent context for hooks |
-| `BM_PARENT_SESSION` | (empty) | Parent session for context handoff |
+| `DAY1_DATABASE_URL` | `mysql+aiomysql://root:111@localhost:6001/day1` | MatrixOne connection |
+| `DAY1_EMBEDDING_PROVIDER` | `openai` | Embedding provider: openai, doubao, mock |
+| `DAY1_OPENAI_API_KEY` | (empty) | OpenAI API key for embeddings |
+| `DAY1_EMBEDDING_DIMENSIONS` | `1536` | Embedding vector dimensions |
+| `DAY1_LLM_API_KEY` | (empty) | LLM API key (for scoring/verification) |
+| `DAY1_LLM_BASE_URL` | (empty) | LLM API base URL |
+| `DAY1_API_KEY` | (empty) | API authentication key (empty = open access) |
+| `DAY1_RATE_LIMIT` | `60` | Requests per minute per IP |
+| `DAY1_HOST` | `127.0.0.1` | Server host |
+| `DAY1_PORT` | `8000` | Server port |
+| `DAY1_LOG_LEVEL` | `INFO` | Logging level |
+| `DAY1_BRANCH` | `main` | Default active branch |
+| `DAY1_TASK_ID` | (empty) | Task context for hooks |
+| `DAY1_AGENT_ID` | (empty) | Agent context for hooks |
+| `DAY1_PARENT_SESSION` | (empty) | Parent session for context handoff |
 
 ### Development Mode
 
-When `BM_API_KEY` is empty, the API runs in open-access mode — no authentication required. This is intended for local development only.
+When `DAY1_API_KEY` is empty, the API runs in open-access mode — no authentication required. This is intended for local development only.
 
-When `BM_EMBEDDING_PROVIDER=mock`, a mock embedding provider generates random vectors. This avoids API costs during testing but disables meaningful semantic search.
+When `DAY1_EMBEDDING_PROVIDER=mock`, a mock embedding provider generates random vectors. This avoids API costs during testing but disables meaningful semantic search.
 
 ---
 

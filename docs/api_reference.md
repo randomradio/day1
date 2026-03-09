@@ -51,7 +51,7 @@ Base URL: `http://localhost:9821`
 ## Notes
 
 - The API returns structured error payloads with HTTP status codes mapped from kernel/domain errors.
-- `BM_DATABASE_URL` controls persistence backend:
+- `DAY1_DATABASE_URL` controls persistence backend:
   - set: SQL persistence
   - unset: in-memory mode
 - MCP endpoint is exposed at `/mcp` and can be called directly by MCP clients.

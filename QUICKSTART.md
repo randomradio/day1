@@ -40,9 +40,9 @@ Prereqs: Go 1.24+ and optional MatrixOne if you want SQL persistence.
 ```bash
 cp .env.example .env
 
-# If using SQL persistence, set BM_DATABASE_URL (env or .env)
+# If using SQL persistence, set DAY1_DATABASE_URL (env or .env)
 # Example:
-# export BM_DATABASE_URL='mysql+aiomysql://root:111@127.0.0.1:6001/day1'
+# export DAY1_DATABASE_URL='mysql+aiomysql://root:111@127.0.0.1:6001/day1'
 
 # Optional DB schema/connectivity check
 bash scripts/check_db.sh
@@ -97,6 +97,6 @@ go run ./cmd/day1-api
 
 | Problem | Fix |
 |---------|-----|
-| DB connection failed | Set `BM_DATABASE_URL` correctly, then run `bash scripts/check_db.sh` |
+| DB connection failed | Set `DAY1_DATABASE_URL` correctly, then run `bash scripts/check_db.sh` |
 | API health check fails | Confirm `go run ./cmd/day1-api` is running on port 9821 |
 | MCP tools missing | Check `claude mcp get day1` and API health |

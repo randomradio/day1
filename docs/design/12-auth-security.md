@@ -14,7 +14,7 @@
 │       │                                                │
 │       ├──→ Is path /mcp/*? → ALLOW (session-based)    │
 │       │                                                │
-│       ├──→ Is BM_API_KEY set?                         │
+│       ├──→ Is DAY1_API_KEY set?                         │
 │       │       │                                        │
 │       │       ├──→ No → ALLOW ALL (dev mode)          │
 │       │       │                                        │
@@ -38,7 +38,7 @@
 **Implementation**: `src/day1/api/app.py`
 
 ```python
-# Optional Bearer token — if BM_API_KEY is set, all requests must include it
+# Optional Bearer token — if DAY1_API_KEY is set, all requests must include it
 security = HTTPBearer(auto_error=False)
 
 async def verify_api_key(credentials = Depends(security)):
@@ -52,7 +52,7 @@ async def verify_api_key(credentials = Depends(security)):
 
 - **Window**: 60 seconds sliding window
 - **Default limit**: 60 requests per IP per window
-- **Configurable**: via `BM_RATE_LIMIT` environment variable
+- **Configurable**: via `DAY1_RATE_LIMIT` environment variable
 - **Exemptions**: `/health` and `/mcp/*` paths are not rate-limited
 - **Implementation**: In-memory per-IP counter with timestamp tracking
 

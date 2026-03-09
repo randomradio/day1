@@ -7,7 +7,7 @@
 #   docker compose --profile dev --profile matrixone up -d
 #
 # DB behavior:
-#   - If BM_DATABASE_URL is set in system env or .env, it is used as-is.
+#   - If DAY1_DATABASE_URL is set in system env or .env, it is used as-is.
 #   - Otherwise, service-specific fallback URLs are used (port 6001).
 #   - Local MatrixOne is optional via profile "matrixone".
 ################################################################################
@@ -32,8 +32,8 @@ services:
     env_file:
       - .env
     environment:
-      BM_DATABASE_URL: ${BM_DATABASE_URL:-mysql+aiomysql://root:111@host.docker.internal:6001/day1}
-      BM_PORT: "9821"
+      DAY1_DATABASE_URL: ${DAY1_DATABASE_URL:-mysql+aiomysql://root:111@host.docker.internal:6001/day1}
+      DAY1_PORT: "9821"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
@@ -47,8 +47,8 @@ services:
     env_file:
       - .env
     environment:
-      BM_DATABASE_URL: ${BM_DATABASE_URL:-mysql+aiomysql://root:111@127.0.0.1:6001/day1}
-      BM_PORT: "${BM_PORT:-9821}"
+      DAY1_DATABASE_URL: ${DAY1_DATABASE_URL:-mysql+aiomysql://root:111@127.0.0.1:6001/day1}
+      DAY1_PORT: "${DAY1_PORT:-9821}"
     volumes:
       - ./:/app
     command: ["go", "run", "./cmd/day1-api"]

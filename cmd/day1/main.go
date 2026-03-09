@@ -154,7 +154,7 @@ func runTests(args []string) error {
 func runMigrate(_ []string) error {
 	cfg := config.LoadFromEnv()
 	if strings.TrimSpace(cfg.DatabaseURL) == "" {
-		return fmt.Errorf("BM_DATABASE_URL is required for migrate")
+		return fmt.Errorf("DAY1_DATABASE_URL is required for migrate")
 	}
 	store, err := storage.NewMySQLStoreFromURL(cfg.DatabaseURL)
 	if err != nil {
@@ -175,7 +175,7 @@ func runMigrate(_ []string) error {
 func runInit(_ []string) error {
 	cfg := config.LoadFromEnv()
 	if strings.TrimSpace(cfg.DatabaseURL) == "" {
-		return fmt.Errorf("BM_DATABASE_URL is required for init")
+		return fmt.Errorf("DAY1_DATABASE_URL is required for init")
 	}
 	store, err := storage.NewMySQLStoreFromURL(cfg.DatabaseURL)
 	if err != nil {
@@ -484,7 +484,7 @@ func printJSON(value any) {
 }
 
 func apiBaseURL() string {
-	if v := strings.TrimSpace(os.Getenv("BM_API_URL")); v != "" {
+	if v := strings.TrimSpace(os.Getenv("DAY1_API_URL")); v != "" {
 		return v
 	}
 	return "http://127.0.0.1:9821"

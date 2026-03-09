@@ -32,16 +32,16 @@
 ## Environment and Preconditions
 
 - MatrixOne is running and reachable (local runs use `127.0.0.1:6001`).
-- Set explicit DB URLs for both runtime and test flows when validating locally (`BM_DATABASE_URL`, `BM_TEST_DATABASE_URL`).
-- For deterministic local E2E smoke, set `BM_EMBEDDING_PROVIDER=mock` and `BM_RATE_LIMIT=0`.
-- For quieter output during report generation, set `BM_LOG_LEVEL=CRITICAL`.
+- Set explicit DB URLs for both runtime and test flows when validating locally (`DAY1_DATABASE_URL`, `DAY1_TEST_DATABASE_URL`).
+- For deterministic local E2E smoke, set `DAY1_EMBEDDING_PROVIDER=mock` and `DAY1_RATE_LIMIT=0`.
+- For quieter output during report generation, set `DAY1_LOG_LEVEL=CRITICAL`.
 
 ## Recommended Command
 
 ```bash
-export BM_DATABASE_URL='mysql+aiomysql://root:111@127.0.0.1:6001/day1'
-export BM_TEST_DATABASE_URL='mysql+aiomysql://root:111@127.0.0.1:6001/day1'
-export BM_EMBEDDING_PROVIDER=mock BM_RATE_LIMIT=0 BM_LOG_LEVEL=CRITICAL
+export DAY1_DATABASE_URL='mysql+aiomysql://root:111@127.0.0.1:6001/day1'
+export DAY1_TEST_DATABASE_URL='mysql+aiomysql://root:111@127.0.0.1:6001/day1'
+export DAY1_EMBEDDING_PROVIDER=mock DAY1_RATE_LIMIT=0 DAY1_LOG_LEVEL=CRITICAL
 go test ./... && go build ./... && go run ./cmd/day1-api
 ```
 
