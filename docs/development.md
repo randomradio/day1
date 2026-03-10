@@ -17,6 +17,7 @@ Important env vars:
 - `DAY1_PORT` (default `9821`)
 - `DAY1_DATABASE_URL` (empty = in-memory backend)
 - `DAY1_EMBEDDING_PROVIDER` / `DAY1_LLM_PROVIDER` and related BYOK keys
+- Optional auth: `DAY1_AUTH_ENABLED`, `DAY1_AUTH_ADMIN_KEY`, `DAY1_BOOTSTRAP_ADMIN_USER_ID` (requires `DAY1_DATABASE_URL`)
 
 ## Run API and CLI
 

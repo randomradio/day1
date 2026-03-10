@@ -45,7 +45,7 @@ func newMemoryService(embedder EmbeddingProvider, llm LLMProvider, store StateSt
 		store:    store,
 		memories: make(map[string]Memory),
 		branches: map[string]Branch{
-			"main": {
+			branchKey("", "main"): {
 				Name:        "main",
 				Description: "Default memory branch",
 				Status:      "active",
@@ -78,7 +78,7 @@ func (s *MemoryService) loadFromStore(ctx context.Context) error {
 	}
 	s.branches = make(map[string]Branch, len(state.Branches)+1)
 	for _, b := range state.Branches {
-		s.branches[b.Name] = b
+		s.branches[branchKey(b.UserID, b.Name)] = b
 	}
 	s.snapshots = make(map[string]Snapshot, len(state.Snapshots))
 	for _, snap := range state.Snapshots {
@@ -88,10 +88,10 @@ func (s *MemoryService) loadFromStore(ctx context.Context) error {
 	for _, rel := range state.Relations {
 		s.relations[rel.ID] = rel
 	}
-	if _, ok := s.branches["main"]; !ok {
+	if _, ok := s.branches[branchKey("", "main")]; !ok {
 		now := time.Now().UTC()
-		main := Branch{Name: "main", Description: "Default memory branch", Status: "active", CreatedAt: now, UpdatedAt: now}
-		s.branches["main"] = main
+		main := Branch{Name: "main", UserID: "", Description: "Default memory branch", Status: "active", CreatedAt: now, UpdatedAt: now}
+		s.branches[branchKey(main.UserID, main.Name)] = main
 		if err := s.store.UpsertBranch(ctx, main); err != nil {
 			return fmt.Errorf("persist default main branch: %w", err)
 		}
@@ -104,6 +104,10 @@ func (s *MemoryService) Write(ctx context.Context, req WriteRequest) (Memory, er
 		return Memory{}, fmt.Errorf("%w: text is required", ErrInvalidInput)
 	}
 	branch := defaultBranch(req.BranchName)
+	userID := strings.TrimSpace(req.UserID)
+	if userID == "" {
+		userID = UserIDFromContext(ctx)
+	}
 
 	var embedding []float32
 	if s.embedder != nil {
@@ -115,6 +119,7 @@ func (s *MemoryService) Write(ctx context.Context, req WriteRequest) (Memory, er
 	now := time.Now().UTC()
 	memory := Memory{
 		ID:          uuid.NewString(),
+		UserID:      userID,
 		Text:        req.Text,
 		Context:     req.Context,
 		FileContext: req.FileContext,
@@ -133,7 +138,10 @@ func (s *MemoryService) Write(ctx context.Context, req WriteRequest) (Memory, er
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.branches[branch]; !ok {
+	if err := s.ensureMainBranchLocked(ctx, userID); err != nil {
+		return Memory{}, err
+	}
+	if _, ok := s.branches[branchKey(userID, branch)]; !ok {
 		return Memory{}, fmt.Errorf("%w: %s", ErrBranchNotFound, branch)
 	}
 	if err := s.persistMemory(ctx, memory); err != nil {
@@ -181,20 +189,32 @@ func (s *MemoryService) WriteBatch(ctx context.Context, reqs []WriteRequest) ([]
 	return results, nil
 }
 
-func (s *MemoryService) Get(_ context.Context, memoryID string) (Memory, error) {
+func (s *MemoryService) Get(ctx context.Context, memoryID string) (Memory, error) {
+	userID := UserIDFromContext(ctx)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	memory, ok := s.memories[memoryID]
 	if !ok {
 		return Memory{}, fmt.Errorf("%w: %s", ErrMemoryNotFound, memoryID)
 	}
+	if userID != "" && memory.UserID != userID {
+		return Memory{}, fmt.Errorf("%w: %s", ErrMemoryNotFound, memoryID)
+	}
 	return cloneMemory(memory), nil
 }
 
 func (s *MemoryService) Update(ctx context.Context, req UpdateRequest) (Memory, error) {
+	userID := strings.TrimSpace(req.UserID)
+	if userID == "" {
+		userID = UserIDFromContext(ctx)
+	}
 	s.mu.Lock()
 	memory, ok := s.memories[req.MemoryID]
 	if !ok {
+		s.mu.Unlock()
+		return Memory{}, fmt.Errorf("%w: %s", ErrMemoryNotFound, req.MemoryID)
+	}
+	if userID != "" && memory.UserID != userID {
 		s.mu.Unlock()
 		return Memory{}, fmt.Errorf("%w: %s", ErrMemoryNotFound, req.MemoryID)
 	}
@@ -279,6 +299,7 @@ func (s *MemoryService) ArchiveBatch(ctx context.Context, memoryIDs []string) (i
 
 func (s *MemoryService) Search(ctx context.Context, req SearchRequest) ([]SearchResult, error) {
 	branch := defaultBranch(req.BranchName)
+	userID := UserIDFromContext(ctx)
 	limit := req.Limit
 	if limit <= 0 {
 		limit = 20
@@ -287,7 +308,7 @@ func (s *MemoryService) Search(ctx context.Context, req SearchRequest) ([]Search
 	s.mu.RLock()
 	candidates := make([]Memory, 0, len(s.memories))
 	for _, m := range s.memories {
-		if !matchMemoryFilter(m, branch, req.Category, req.SourceType, req.Status, req.SessionID, false) {
+		if !matchMemoryFilter(m, userID, branch, req.Category, req.SourceType, req.Status, req.SessionID, false) {
 			continue
 		}
 		candidates = append(candidates, cloneMemory(m))
@@ -338,8 +359,9 @@ func (s *MemoryService) Search(ctx context.Context, req SearchRequest) ([]Search
 	return results, nil
 }
 
-func (s *MemoryService) Timeline(_ context.Context, req TimelineRequest) ([]Memory, error) {
+func (s *MemoryService) Timeline(ctx context.Context, req TimelineRequest) ([]Memory, error) {
 	branch := defaultBranch(req.BranchName)
+	userID := UserIDFromContext(ctx)
 	limit := req.Limit
 	if limit <= 0 {
 		limit = 20
@@ -348,7 +370,7 @@ func (s *MemoryService) Timeline(_ context.Context, req TimelineRequest) ([]Memo
 	s.mu.RLock()
 	items := make([]Memory, 0, len(s.memories))
 	for _, m := range s.memories {
-		if !matchMemoryFilter(m, branch, req.Category, req.SourceType, "", req.SessionID, false) {
+		if !matchMemoryFilter(m, userID, branch, req.Category, req.SourceType, "", req.SessionID, false) {
 			continue
 		}
 		items = append(items, cloneMemory(m))
@@ -364,12 +386,16 @@ func (s *MemoryService) Timeline(_ context.Context, req TimelineRequest) ([]Memo
 	return items, nil
 }
 
-func (s *MemoryService) Count(_ context.Context, branchName string, includeArchived bool) (int, error) {
+func (s *MemoryService) Count(ctx context.Context, branchName string, includeArchived bool) (int, error) {
 	branch := defaultBranch(branchName)
+	userID := UserIDFromContext(ctx)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	count := 0
 	for _, m := range s.memories {
+		if userID != "" && m.UserID != userID {
+			continue
+		}
 		if m.BranchName != branch {
 			continue
 		}
@@ -389,19 +415,24 @@ func (s *MemoryService) CreateBranch(ctx context.Context, name, parent, descript
 	if parent == "" {
 		parent = "main"
 	}
+	userID := UserIDFromContext(ctx)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.branches[name]; ok {
+	if err := s.ensureMainBranchLocked(ctx, userID); err != nil {
+		return Branch{}, err
+	}
+	if _, ok := s.branches[branchKey(userID, name)]; ok {
 		return Branch{}, fmt.Errorf("%w: %s", ErrBranchExists, name)
 	}
-	if _, ok := s.branches[parent]; !ok {
+	if _, ok := s.branches[branchKey(userID, parent)]; !ok {
 		return Branch{}, fmt.Errorf("%w: %s", ErrBranchNotFound, parent)
 	}
 
 	now := time.Now().UTC()
 	branch := Branch{
 		Name:        name,
+		UserID:      userID,
 		Parent:      parent,
 		Description: description,
 		Status:      "active",
@@ -411,14 +442,15 @@ func (s *MemoryService) CreateBranch(ctx context.Context, name, parent, descript
 	if err := s.persistBranch(ctx, branch); err != nil {
 		return Branch{}, err
 	}
-	s.branches[name] = branch
+	s.branches[branchKey(userID, name)] = branch
 	return branch, nil
 }
 
-func (s *MemoryService) SwitchBranch(_ context.Context, name string) (Branch, error) {
+func (s *MemoryService) SwitchBranch(ctx context.Context, name string) (Branch, error) {
+	userID := UserIDFromContext(ctx)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	branch, ok := s.branches[name]
+	branch, ok := s.branches[branchKey(userID, name)]
 	if !ok {
 		return Branch{}, fmt.Errorf("%w: %s", ErrBranchNotFound, name)
 	}
@@ -428,11 +460,21 @@ func (s *MemoryService) SwitchBranch(_ context.Context, name string) (Branch, er
 	return branch, nil
 }
 
-func (s *MemoryService) ListBranches(_ context.Context) ([]Branch, error) {
+func (s *MemoryService) ListBranches(ctx context.Context) ([]Branch, error) {
+	userID := UserIDFromContext(ctx)
+	s.mu.Lock()
+	if err := s.ensureMainBranchLocked(ctx, userID); err != nil {
+		s.mu.Unlock()
+		return nil, err
+	}
+	s.mu.Unlock()
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]Branch, 0, len(s.branches))
 	for _, branch := range s.branches {
+		if userID != "" && branch.UserID != userID {
+			continue
+		}
 		out = append(out, branch)
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -446,9 +488,10 @@ func (s *MemoryService) ArchiveBranch(ctx context.Context, name string) (Branch,
 		return Branch{}, fmt.Errorf("%w: cannot archive main branch", ErrInvalidBranch)
 	}
 
+	userID := UserIDFromContext(ctx)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	branch, ok := s.branches[name]
+	branch, ok := s.branches[branchKey(userID, name)]
 	if !ok {
 		return Branch{}, fmt.Errorf("%w: %s", ErrBranchNotFound, name)
 	}
@@ -457,7 +500,7 @@ func (s *MemoryService) ArchiveBranch(ctx context.Context, name string) (Branch,
 	if err := s.persistBranch(ctx, branch); err != nil {
 		return Branch{}, err
 	}
-	s.branches[name] = branch
+	s.branches[branchKey(userID, name)] = branch
 	return branch, nil
 }
 
@@ -466,13 +509,17 @@ func (s *MemoryService) DeleteBranch(ctx context.Context, name string) error {
 		return fmt.Errorf("%w: cannot delete main branch", ErrInvalidBranch)
 	}
 
+	userID := UserIDFromContext(ctx)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.branches[name]; !ok {
+	if _, ok := s.branches[branchKey(userID, name)]; !ok {
 		return fmt.Errorf("%w: %s", ErrBranchNotFound, name)
 	}
 	now := time.Now().UTC()
 	for id, m := range s.memories {
+		if userID != "" && m.UserID != userID {
+			continue
+		}
 		if m.BranchName != name {
 			continue
 		}
@@ -483,22 +530,27 @@ func (s *MemoryService) DeleteBranch(ctx context.Context, name string) error {
 		}
 		s.memories[id] = m
 	}
-	if err := s.deleteBranch(ctx, name); err != nil {
+	if err := s.deleteBranch(ctx, userID, name); err != nil {
 		return err
 	}
-	delete(s.branches, name)
+	delete(s.branches, branchKey(userID, name))
 	return nil
 }
 
 func (s *MemoryService) Snapshot(ctx context.Context, branch, label string) (Snapshot, error) {
 	branch = defaultBranch(branch)
+	userID := UserIDFromContext(ctx)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.branches[branch]; !ok {
+	if err := s.ensureMainBranchLocked(ctx, userID); err != nil {
+		return Snapshot{}, err
+	}
+	if _, ok := s.branches[branchKey(userID, branch)]; !ok {
 		return Snapshot{}, fmt.Errorf("%w: %s", ErrBranchNotFound, branch)
 	}
 	snapshot := Snapshot{
 		ID:        uuid.NewString(),
+		UserID:    userID,
 		Branch:    branch,
 		Label:     label,
 		CreatedAt: time.Now().UTC(),
@@ -510,12 +562,16 @@ func (s *MemoryService) Snapshot(ctx context.Context, branch, label string) (Sna
 	return snapshot, nil
 }
 
-func (s *MemoryService) ListSnapshots(_ context.Context, branch string) ([]Snapshot, error) {
+func (s *MemoryService) ListSnapshots(ctx context.Context, branch string) ([]Snapshot, error) {
 	branch = defaultBranch(branch)
+	userID := UserIDFromContext(ctx)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	items := make([]Snapshot, 0)
 	for _, snapshot := range s.snapshots {
+		if userID != "" && snapshot.UserID != userID {
+			continue
+		}
 		if snapshot.Branch != branch {
 			continue
 		}
@@ -528,16 +584,23 @@ func (s *MemoryService) ListSnapshots(_ context.Context, branch string) ([]Snaps
 }
 
 func (s *MemoryService) Restore(ctx context.Context, snapshotID string) (int, error) {
+	userID := UserIDFromContext(ctx)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	snapshot, ok := s.snapshots[snapshotID]
 	if !ok {
 		return 0, fmt.Errorf("%w: %s", ErrSnapshotNotFound, snapshotID)
 	}
+	if userID != "" && snapshot.UserID != userID {
+		return 0, fmt.Errorf("%w: %s", ErrSnapshotNotFound, snapshotID)
+	}
 
 	now := time.Now().UTC()
 	archived := 0
 	for id, m := range s.memories {
+		if userID != "" && m.UserID != userID {
+			continue
+		}
 		if m.BranchName != snapshot.Branch || m.Status == "archived" {
 			continue
 		}
@@ -561,17 +624,21 @@ func (s *MemoryService) Merge(ctx context.Context, sourceBranch, targetBranch st
 		return MergeResult{}, fmt.Errorf("%w: source and target branch must differ", ErrInvalidInput)
 	}
 
+	userID := UserIDFromContext(ctx)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.branches[sourceBranch]; !ok {
+	if _, ok := s.branches[branchKey(userID, sourceBranch)]; !ok {
 		return MergeResult{}, fmt.Errorf("%w: %s", ErrBranchNotFound, sourceBranch)
 	}
-	if _, ok := s.branches[targetBranch]; !ok {
+	if _, ok := s.branches[branchKey(userID, targetBranch)]; !ok {
 		return MergeResult{}, fmt.Errorf("%w: %s", ErrBranchNotFound, targetBranch)
 	}
 
 	targetTexts := make(map[string]struct{})
 	for _, m := range s.memories {
+		if userID != "" && m.UserID != userID {
+			continue
+		}
 		if m.BranchName == targetBranch && m.Status != "archived" {
 			targetTexts[m.Text] = struct{}{}
 		}
@@ -581,6 +648,9 @@ func (s *MemoryService) Merge(ctx context.Context, sourceBranch, targetBranch st
 	skipped := 0
 	now := time.Now().UTC()
 	for _, m := range s.memories {
+		if userID != "" && m.UserID != userID {
+			continue
+		}
 		if m.BranchName != sourceBranch || m.Status == "archived" {
 			continue
 		}
@@ -590,6 +660,7 @@ func (s *MemoryService) Merge(ctx context.Context, sourceBranch, targetBranch st
 		}
 		copy := cloneMemory(m)
 		copy.ID = uuid.NewString()
+		copy.UserID = userID
 		copy.BranchName = targetBranch
 		copy.CreatedAt = now
 		copy.UpdatedAt = now
@@ -605,12 +676,15 @@ func (s *MemoryService) Merge(ctx context.Context, sourceBranch, targetBranch st
 }
 
 func (s *MemoryService) Relate(ctx context.Context, sourceID, targetID, relationType string, weight float64, metadata map[string]any) (Relation, error) {
+	userID := UserIDFromContext(ctx)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.memories[sourceID]; !ok {
+	sourceMemory, ok := s.memories[sourceID]
+	if !ok || (userID != "" && sourceMemory.UserID != userID) {
 		return Relation{}, fmt.Errorf("%w: source memory %s", ErrMemoryNotFound, sourceID)
 	}
-	if _, ok := s.memories[targetID]; !ok {
+	targetMemory, ok := s.memories[targetID]
+	if !ok || (userID != "" && targetMemory.UserID != userID) {
 		return Relation{}, fmt.Errorf("%w: target memory %s", ErrMemoryNotFound, targetID)
 	}
 	if relationType == "" {
@@ -621,6 +695,7 @@ func (s *MemoryService) Relate(ctx context.Context, sourceID, targetID, relation
 	}
 	relation := Relation{
 		ID:           uuid.NewString(),
+		UserID:       userID,
 		SourceID:     sourceID,
 		TargetID:     targetID,
 		RelationType: relationType,
@@ -635,7 +710,8 @@ func (s *MemoryService) Relate(ctx context.Context, sourceID, targetID, relation
 	return relation, nil
 }
 
-func (s *MemoryService) Relations(_ context.Context, memoryID, relationType, direction string) ([]Relation, error) {
+func (s *MemoryService) Relations(ctx context.Context, memoryID, relationType, direction string) ([]Relation, error) {
+	userID := UserIDFromContext(ctx)
 	if direction == "" {
 		direction = "both"
 	}
@@ -644,6 +720,9 @@ func (s *MemoryService) Relations(_ context.Context, memoryID, relationType, dir
 	defer s.mu.RUnlock()
 	out := make([]Relation, 0)
 	for _, rel := range s.relations {
+		if userID != "" && rel.UserID != userID {
+			continue
+		}
 		if relationType != "" && rel.RelationType != relationType {
 			continue
 		}
@@ -665,9 +744,11 @@ func (s *MemoryService) Relations(_ context.Context, memoryID, relationType, dir
 }
 
 func (s *MemoryService) DeleteRelation(ctx context.Context, relationID string) error {
+	userID := UserIDFromContext(ctx)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.relations[relationID]; !ok {
+	rel, ok := s.relations[relationID]
+	if !ok || (userID != "" && rel.UserID != userID) {
 		return fmt.Errorf("%w: %s", ErrRelationNotFound, relationID)
 	}
 	if err := s.deleteRelation(ctx, relationID); err != nil {
@@ -678,6 +759,7 @@ func (s *MemoryService) DeleteRelation(ctx context.Context, relationID string) e
 }
 
 func (s *MemoryService) Graph(ctx context.Context, memoryID string, depth, limit int) (GraphResult, error) {
+	userID := UserIDFromContext(ctx)
 	if depth <= 0 {
 		depth = 1
 	}
@@ -708,6 +790,9 @@ func (s *MemoryService) Graph(ctx context.Context, memoryID string, depth, limit
 			continue
 		}
 		for _, rel := range s.relations {
+			if userID != "" && rel.UserID != userID {
+				continue
+			}
 			var nextID string
 			switch {
 			case rel.SourceID == item.id:
@@ -722,7 +807,7 @@ func (s *MemoryService) Graph(ctx context.Context, memoryID string, depth, limit
 				continue
 			}
 			nextMem, ok := s.memories[nextID]
-			if !ok {
+			if !ok || (userID != "" && nextMem.UserID != userID) {
 				continue
 			}
 			visited[nextID] = struct{}{}
@@ -757,11 +842,11 @@ func (s *MemoryService) persistBranch(ctx context.Context, branch Branch) error 
 	return nil
 }
 
-func (s *MemoryService) deleteBranch(ctx context.Context, branchName string) error {
+func (s *MemoryService) deleteBranch(ctx context.Context, userID, branchName string) error {
 	if s.store == nil {
 		return nil
 	}
-	if err := s.store.DeleteBranch(ctx, branchName); err != nil {
+	if err := s.store.DeleteBranch(ctx, userID, branchName); err != nil {
 		return fmt.Errorf("delete branch %s: %w", branchName, err)
 	}
 	return nil
@@ -831,7 +916,10 @@ func cloneMap(in map[string]any) map[string]any {
 	return out
 }
 
-func matchMemoryFilter(m Memory, branch, category, sourceType, status, sessionID string, includeArchived bool) bool {
+func matchMemoryFilter(m Memory, userID, branch, category, sourceType, status, sessionID string, includeArchived bool) bool {
+	if userID != "" && m.UserID != userID {
+		return false
+	}
 	if m.BranchName != branch {
 		return false
 	}
@@ -851,6 +939,31 @@ func matchMemoryFilter(m Memory, branch, category, sourceType, status, sessionID
 		return false
 	}
 	return true
+}
+
+func branchKey(userID, name string) string {
+	return strings.TrimSpace(userID) + "::" + strings.TrimSpace(name)
+}
+
+func (s *MemoryService) ensureMainBranchLocked(ctx context.Context, userID string) error {
+	key := branchKey(userID, "main")
+	if _, ok := s.branches[key]; ok {
+		return nil
+	}
+	now := time.Now().UTC()
+	branch := Branch{
+		Name:        "main",
+		UserID:      userID,
+		Description: "Default memory branch",
+		Status:      "active",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := s.persistBranch(ctx, branch); err != nil {
+		return err
+	}
+	s.branches[key] = branch
+	return nil
 }
 
 func toSearchResults(memories []Memory, limit int) []SearchResult {

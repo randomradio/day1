@@ -2,6 +2,17 @@
 
 Base URL: `http://localhost:9821`
 
+## Auth
+
+- When `DAY1_AUTH_ENABLED=true`, all `/api/v1/**` routes require:
+  - `X-Day1-API-Key: <key>` or
+  - `Authorization: Bearer <key>`
+- `GET /health` remains public.
+- Auth key management:
+  - `POST /api/v1/auth/keys`
+  - `GET /api/v1/auth/keys`
+  - `POST /api/v1/auth/keys/{key_id}/revoke`
+
 ## Health
 
 - `GET /health`
@@ -32,6 +43,8 @@ Base URL: `http://localhost:9821`
 - `POST /api/v1/ingest/claude-hook`
 - `POST /api/v1/ingest/hook`
 - `GET /api/v1/ingest/hook`
+
+Raw hook ingest can bind session either from JSON body (`session_id`) or from header `X-Day1-Session-Id`.
 
 ## Sessions
 

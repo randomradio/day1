@@ -206,3 +206,37 @@ func TestGraphTraversal(t *testing.T) {
 		t.Fatalf("expected >=2 edges, got %d", len(graph.Edges))
 	}
 }
+
+func TestUserIsolationByContext(t *testing.T) {
+	svc := newKernel()
+	ctxA := WithUserID(context.Background(), "user-a")
+	ctxB := WithUserID(context.Background(), "user-b")
+
+	memA, err := svc.Write(ctxA, WriteRequest{Text: "A private memory"})
+	if err != nil {
+		t.Fatalf("write A failed: %v", err)
+	}
+	if _, err := svc.Write(ctxB, WriteRequest{Text: "B private memory"}); err != nil {
+		t.Fatalf("write B failed: %v", err)
+	}
+
+	countA, err := svc.Count(ctxA, "main", false)
+	if err != nil {
+		t.Fatalf("count A failed: %v", err)
+	}
+	if countA != 1 {
+		t.Fatalf("expected user-a count=1, got %d", countA)
+	}
+
+	countB, err := svc.Count(ctxB, "main", false)
+	if err != nil {
+		t.Fatalf("count B failed: %v", err)
+	}
+	if countB != 1 {
+		t.Fatalf("expected user-b count=1, got %d", countB)
+	}
+
+	if _, err := svc.Get(ctxB, memA.ID); err == nil {
+		t.Fatalf("expected not found when user-b reads user-a memory")
+	}
+}

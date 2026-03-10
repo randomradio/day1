@@ -40,6 +40,18 @@ func main() {
 		}
 		sqlStore = store
 		defer func() { _ = sqlStore.Close() }()
+		if cfg.AuthEnabled {
+			ctx := context.Background()
+			if err := store.EnsureSchema(ctx); err != nil {
+				log.Fatalf("kernel schema ensure failed: %v", err)
+			}
+			if err := store.EnsureMetaSchema(ctx); err != nil {
+				log.Fatalf("metadata schema ensure failed: %v", err)
+			}
+			if err := store.AssignLegacyDataToUser(ctx, cfg.BootstrapAdminUserID); err != nil {
+				log.Fatalf("legacy user assignment failed: %v", err)
+			}
+		}
 		sqlKernel, err := kernel.NewMemoryServiceWithStore(context.Background(), embedder, llmProvider, store)
 		if err != nil {
 			log.Fatalf("kernel store bootstrap failed: %v", err)

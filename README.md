@@ -74,6 +74,24 @@ LLM provider:
 - `anthropic`: requires `DAY1_ANTHROPIC_API_KEY`
 - `custom`: requires `DAY1_LLM_API_KEY` + `DAY1_LLM_BASE_URL`
 
+## API Key Auth (per-user)
+
+Optional auth mode (requires SQL persistence):
+
+- `DAY1_AUTH_ENABLED=true`
+- `DAY1_AUTH_ADMIN_KEY=<bootstrap-admin-key>`
+- `DAY1_BOOTSTRAP_ADMIN_USER_ID=admin`
+- `DAY1_DATABASE_URL=...` (required when auth is enabled)
+
+When enabled, call API endpoints with:
+
+- `X-Day1-API-Key: <key>` or `Authorization: Bearer <key>`
+
+Bootstrap flow:
+
+1. Call `POST /api/v1/auth/keys` using `DAY1_AUTH_ADMIN_KEY` as request key.
+2. Use the returned `api_key` for normal user-scoped requests.
+
 ## Docs
 
 - [QUICKSTART.md](QUICKSTART.md)

@@ -5,6 +5,7 @@ import "time"
 // Session tracks high-level per-session counters and lifecycle.
 type Session struct {
 	ID          string
+	UserID      string
 	BranchName  string
 	Status      string
 	StartedAt   time.Time
@@ -18,6 +19,7 @@ type Session struct {
 type HookLog struct {
 	Seq       int64
 	Event     string
+	UserID    string
 	SessionID string
 	Payload   map[string]any
 	CreatedAt time.Time
@@ -26,6 +28,7 @@ type HookLog struct {
 // Trace stores trace playback payload.
 type Trace struct {
 	ID              string
+	UserID          string
 	SessionID       string
 	BranchName      string
 	TraceType       string
@@ -40,6 +43,7 @@ type Trace struct {
 // Comparison stores trace comparison results.
 type Comparison struct {
 	ID              string
+	UserID          string
 	TraceAID        string
 	TraceBID        string
 	SkillID         string
@@ -55,4 +59,16 @@ type PersistedState struct {
 	HookLogs    []HookLog
 	Traces      []Trace
 	Comparisons []Comparison
+}
+
+type APIKey struct {
+	ID         string
+	KeyPrefix  string
+	KeyHash    string
+	UserID     string
+	Label      string
+	Scopes     []string
+	CreatedAt  time.Time
+	LastUsedAt *time.Time
+	RevokedAt  *time.Time
 }

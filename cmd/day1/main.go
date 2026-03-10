@@ -89,6 +89,10 @@ func printHelp() {
 	fmt.Println("  branch <create|switch|list|archive|delete> ...")
 	fmt.Println("  merge <source> [--into target]")
 	fmt.Println("  snapshot <create|list|restore> ...")
+	fmt.Println("")
+	fmt.Println("Environment:")
+	fmt.Println("  DAY1_API_URL (default http://127.0.0.1:9821)")
+	fmt.Println("  DAY1_API_KEY (optional request key for auth-enabled API)")
 }
 
 func runAPIServer() error {
@@ -115,6 +119,18 @@ func runAPIServer() error {
 		}
 		sqlStore = store
 		defer func() { _ = sqlStore.Close() }()
+		if cfg.AuthEnabled {
+			ctx := context.Background()
+			if err := store.EnsureSchema(ctx); err != nil {
+				return err
+			}
+			if err := store.EnsureMetaSchema(ctx); err != nil {
+				return err
+			}
+			if err := store.AssignLegacyDataToUser(ctx, cfg.BootstrapAdminUserID); err != nil {
+				return err
+			}
+		}
 		sqlKernel, err := kernel.NewMemoryServiceWithStore(context.Background(), embedder, llmProvider, store)
 		if err != nil {
 			return err
@@ -448,6 +464,9 @@ func apiRequest(method, path string, payload any, query map[string]string) (any,
 	}
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	if apiKey := strings.TrimSpace(os.Getenv("DAY1_API_KEY")); apiKey != "" {
+		req.Header.Set("X-Day1-API-Key", apiKey)
 	}
 
 	resp, err := http.DefaultClient.Do(req)

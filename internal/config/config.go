@@ -13,6 +13,10 @@ type Config struct {
 	Port        int
 	DatabaseURL string
 
+	AuthEnabled          bool
+	AuthAdminKey         string
+	BootstrapAdminUserID string
+
 	EmbeddingProvider string
 	EmbeddingModel    string
 	EmbeddingDims     int
@@ -35,8 +39,11 @@ type Config struct {
 
 func LoadFromEnv() Config {
 	return Config{
-		Port:        envInt("DAY1_PORT", 9821),
-		DatabaseURL: envString("DAY1_DATABASE_URL", ""),
+		Port:                 envInt("DAY1_PORT", 9821),
+		DatabaseURL:          envString("DAY1_DATABASE_URL", ""),
+		AuthEnabled:          envBool("DAY1_AUTH_ENABLED", false),
+		AuthAdminKey:         envString("DAY1_AUTH_ADMIN_KEY", ""),
+		BootstrapAdminUserID: envString("DAY1_BOOTSTRAP_ADMIN_USER_ID", "admin"),
 
 		EmbeddingProvider: strings.ToLower(envString("DAY1_EMBEDDING_PROVIDER", "mock")),
 		EmbeddingModel:    envString("DAY1_EMBEDDING_MODEL", "text-embedding-3-small"),
@@ -62,6 +69,17 @@ func LoadFromEnv() Config {
 func (c Config) ValidateBYOK() error {
 	if c.Port <= 0 {
 		return errors.New("DAY1_PORT must be > 0")
+	}
+	if c.AuthEnabled {
+		if strings.TrimSpace(c.DatabaseURL) == "" {
+			return errors.New("DAY1_AUTH_ENABLED=true requires DAY1_DATABASE_URL")
+		}
+		if strings.TrimSpace(c.AuthAdminKey) == "" {
+			return errors.New("DAY1_AUTH_ENABLED=true requires DAY1_AUTH_ADMIN_KEY")
+		}
+		if strings.TrimSpace(c.BootstrapAdminUserID) == "" {
+			return errors.New("DAY1_AUTH_ENABLED=true requires DAY1_BOOTSTRAP_ADMIN_USER_ID")
+		}
 	}
 
 	switch c.EmbeddingProvider {
@@ -131,4 +149,19 @@ func envInt(key string, fallback int) int {
 		return fallback
 	}
 	return parsed
+}
+
+func envBool(key string, fallback bool) bool {
+	value := strings.TrimSpace(strings.ToLower(os.Getenv(key)))
+	if value == "" {
+		return fallback
+	}
+	switch value {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return fallback
+	}
 }

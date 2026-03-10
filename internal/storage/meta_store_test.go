@@ -25,8 +25,14 @@ func TestEnsureMetaSchema(t *testing.T) {
 	store, mock, cleanup := newMockStore(t)
 	defer cleanup()
 
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 5; i++ {
 		mock.ExpectExec(regexp.QuoteMeta("CREATE TABLE IF NOT EXISTS")).WillReturnResult(sqlmock.NewResult(0, 0))
+	}
+	for i := 0; i < 4; i++ {
+		mock.ExpectExec(regexp.QuoteMeta("ALTER TABLE")).WillReturnResult(sqlmock.NewResult(0, 0))
+	}
+	for i := 0; i < 4; i++ {
+		mock.ExpectExec(regexp.QuoteMeta("CREATE INDEX")).WillReturnResult(sqlmock.NewResult(0, 0))
 	}
 
 	if err := store.EnsureMetaSchema(context.Background()); err != nil {
@@ -43,11 +49,12 @@ func TestUpsertSessionAndMetaWrites(t *testing.T) {
 
 	now := time.Now().UTC()
 	mock.ExpectExec("INSERT INTO sessions").WithArgs(
-		"s1", "main", "active", sqlmock.AnyArg(), nil, 2, 1, 3,
+		"s1", "u1", "main", "active", sqlmock.AnyArg(), nil, 2, 1, 3,
 	).WillReturnResult(sqlmock.NewResult(0, 1))
 
 	err := store.UpsertSession(context.Background(), meta.Session{
 		ID:          "s1",
+		UserID:      "u1",
 		BranchName:  "main",
 		Status:      "active",
 		StartedAt:   now,
@@ -60,11 +67,12 @@ func TestUpsertSessionAndMetaWrites(t *testing.T) {
 	}
 
 	mock.ExpectExec("INSERT INTO hook_logs").WithArgs(
-		"SessionStart", "s1", sqlmock.AnyArg(), sqlmock.AnyArg(),
+		"SessionStart", "u1", "s1", sqlmock.AnyArg(), sqlmock.AnyArg(),
 	).WillReturnResult(sqlmock.NewResult(42, 1))
 
 	seq, err := store.InsertHookLog(context.Background(), meta.HookLog{
 		Event:     "SessionStart",
+		UserID:    "u1",
 		SessionID: "s1",
 		Payload:   map[string]any{"k": "v"},
 		CreatedAt: now,
@@ -77,11 +85,12 @@ func TestUpsertSessionAndMetaWrites(t *testing.T) {
 	}
 
 	mock.ExpectExec("INSERT INTO traces").WithArgs(
-		"t1", "s1", "main", "original", nil, nil, nil, sqlmock.AnyArg(), nil, sqlmock.AnyArg(),
+		"t1", "u1", "s1", "main", "original", nil, nil, nil, sqlmock.AnyArg(), nil, sqlmock.AnyArg(),
 	).WillReturnResult(sqlmock.NewResult(0, 1))
 
 	err = store.UpsertTrace(context.Background(), meta.Trace{
 		ID:         "t1",
+		UserID:     "u1",
 		SessionID:  "s1",
 		BranchName: "main",
 		TraceType:  "original",
@@ -93,11 +102,12 @@ func TestUpsertSessionAndMetaWrites(t *testing.T) {
 	}
 
 	mock.ExpectExec("INSERT INTO trace_comparisons").WithArgs(
-		"c1", "t1", "t2", nil, sqlmock.AnyArg(), "different", sqlmock.AnyArg(), sqlmock.AnyArg(),
+		"c1", "u1", "t1", "t2", nil, sqlmock.AnyArg(), "different", sqlmock.AnyArg(), sqlmock.AnyArg(),
 	).WillReturnResult(sqlmock.NewResult(0, 1))
 
 	err = store.UpsertComparison(context.Background(), meta.Comparison{
 		ID:              "c1",
+		UserID:          "u1",
 		TraceAID:        "t1",
 		TraceBID:        "t2",
 		Verdict:         "different",
@@ -121,21 +131,21 @@ func TestLoadMetaState(t *testing.T) {
 	now := time.Now().UTC()
 	ended := now.Add(10 * time.Minute)
 
-	sessionRows := sqlmock.NewRows([]string{"id", "branch_name", "status", "started_at", "ended_at", "memory_count", "trace_count", "hook_count"}).
-		AddRow("s1", "main", "active", now, ended, 1, 2, 3)
-	mock.ExpectQuery("SELECT id, branch_name, status, started_at, ended_at, memory_count, trace_count, hook_count").WillReturnRows(sessionRows)
+	sessionRows := sqlmock.NewRows([]string{"id", "user_id", "branch_name", "status", "started_at", "ended_at", "memory_count", "trace_count", "hook_count"}).
+		AddRow("s1", "u1", "main", "active", now, ended, 1, 2, 3)
+	mock.ExpectQuery("SELECT id, user_id, branch_name, status, started_at, ended_at, memory_count, trace_count, hook_count").WillReturnRows(sessionRows)
 
-	hookRows := sqlmock.NewRows([]string{"seq", "event", "session_id", "payload_json", "created_at"}).
-		AddRow(int64(1), "SessionStart", "s1", `{"k":"v"}`, now)
-	mock.ExpectQuery("SELECT seq, event, session_id, payload_json, created_at").WillReturnRows(hookRows)
+	hookRows := sqlmock.NewRows([]string{"seq", "event", "user_id", "session_id", "payload_json", "created_at"}).
+		AddRow(int64(1), "SessionStart", "u1", "s1", `{"k":"v"}`, now)
+	mock.ExpectQuery("SELECT seq, event, user_id, session_id, payload_json, created_at").WillReturnRows(hookRows)
 
-	traceRows := sqlmock.NewRows([]string{"id", "session_id", "branch_name", "trace_type", "parent_trace_id", "skill_id", "task_description", "steps_json", "metadata_json", "created_at"}).
-		AddRow("t1", "s1", "main", "original", nil, nil, nil, `[{"event":"x"}]`, `{"m":1}`, now)
-	mock.ExpectQuery("SELECT id, session_id, branch_name, trace_type, parent_trace_id, skill_id, task_description, steps_json, metadata_json, created_at").WillReturnRows(traceRows)
+	traceRows := sqlmock.NewRows([]string{"id", "user_id", "session_id", "branch_name", "trace_type", "parent_trace_id", "skill_id", "task_description", "steps_json", "metadata_json", "created_at"}).
+		AddRow("t1", "u1", "s1", "main", "original", nil, nil, nil, `[{"event":"x"}]`, `{"m":1}`, now)
+	mock.ExpectQuery("SELECT id, user_id, session_id, branch_name, trace_type, parent_trace_id, skill_id, task_description, steps_json, metadata_json, created_at").WillReturnRows(traceRows)
 
-	comparisonRows := sqlmock.NewRows([]string{"id", "trace_a_id", "trace_b_id", "skill_id", "dimension_scores_json", "verdict", "insights_json", "created_at"}).
-		AddRow("c1", "t1", "t2", nil, `{"step_similarity":0.5}`, "different", `{"avg":0.5}`, now)
-	mock.ExpectQuery("SELECT id, trace_a_id, trace_b_id, skill_id, dimension_scores_json, verdict, insights_json, created_at").WillReturnRows(comparisonRows)
+	comparisonRows := sqlmock.NewRows([]string{"id", "user_id", "trace_a_id", "trace_b_id", "skill_id", "dimension_scores_json", "verdict", "insights_json", "created_at"}).
+		AddRow("c1", "u1", "t1", "t2", nil, `{"step_similarity":0.5}`, "different", `{"avg":0.5}`, now)
+	mock.ExpectQuery("SELECT id, user_id, trace_a_id, trace_b_id, skill_id, dimension_scores_json, verdict, insights_json, created_at").WillReturnRows(comparisonRows)
 
 	state, err := store.LoadMetaState(context.Background())
 	if err != nil {
@@ -147,8 +157,14 @@ func TestLoadMetaState(t *testing.T) {
 	if state.Sessions[0].ID != "s1" {
 		t.Fatalf("unexpected session id: %s", state.Sessions[0].ID)
 	}
+	if state.Sessions[0].UserID != "u1" {
+		t.Fatalf("unexpected session user id: %s", state.Sessions[0].UserID)
+	}
 	if state.Traces[0].ID != "t1" {
 		t.Fatalf("unexpected trace id: %s", state.Traces[0].ID)
+	}
+	if state.Traces[0].UserID != "u1" {
+		t.Fatalf("unexpected trace user id: %s", state.Traces[0].UserID)
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {

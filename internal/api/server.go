@@ -2,6 +2,10 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -29,10 +33,16 @@ type MetadataStore interface {
 	InsertHookLog(ctx context.Context, hook meta.HookLog) (int64, error)
 	UpsertTrace(ctx context.Context, trace meta.Trace) error
 	UpsertComparison(ctx context.Context, comparison meta.Comparison) error
+	CreateAPIKey(ctx context.Context, apiKey meta.APIKey) error
+	ListAPIKeys(ctx context.Context, userID string) ([]meta.APIKey, error)
+	GetAPIKeyByPrefix(ctx context.Context, keyPrefix string) (*meta.APIKey, error)
+	RevokeAPIKey(ctx context.Context, keyID string, revokedAt time.Time) error
+	TouchAPIKeyLastUsed(ctx context.Context, keyID string, usedAt time.Time) error
 }
 
 type sessionState struct {
 	ID          string     `json:"id"`
+	UserID      string     `json:"user_id,omitempty"`
 	BranchName  string     `json:"branch_name"`
 	Status      string     `json:"status"`
 	StartedAt   time.Time  `json:"started_at"`
@@ -44,6 +54,7 @@ type sessionState struct {
 
 type traceState struct {
 	ID              string           `json:"id"`
+	UserID          string           `json:"user_id,omitempty"`
 	SessionID       string           `json:"session_id,omitempty"`
 	Branch          string           `json:"branch"`
 	TraceType       string           `json:"trace_type"`
@@ -57,6 +68,7 @@ type traceState struct {
 
 type comparisonState struct {
 	ID              string             `json:"id"`
+	UserID          string             `json:"user_id,omitempty"`
 	TraceAID        string             `json:"trace_a_id"`
 	TraceBID        string             `json:"trace_b_id"`
 	SkillID         string             `json:"skill_id,omitempty"`
@@ -81,7 +93,18 @@ type Server struct {
 	comparisons []comparisonState
 }
 
+type apiPrincipal struct {
+	UserID  string
+	KeyID   string
+	IsAdmin bool
+}
+
+const principalContextKey = "day1.principal"
+
 func NewServer(cfg config.Config, k kernel.MemoryKernel, registry *mcp.Registry, metadataStore MetadataStore) (*Server, error) {
+	if cfg.AuthEnabled && metadataStore == nil {
+		return nil, fmt.Errorf("auth requires metadata store backing")
+	}
 	s := &Server{
 		cfg:         cfg,
 		kernel:      k,
@@ -112,8 +135,9 @@ func (s *Server) loadMetaState(state meta.PersistedState) {
 	s.metaMu.Lock()
 	for _, item := range state.Sessions {
 		copy := item
-		s.sessions[item.ID] = &sessionState{
+		s.sessions[sessionKey(item.UserID, item.ID)] = &sessionState{
 			ID:          copy.ID,
+			UserID:      copy.UserID,
 			BranchName:  copy.BranchName,
 			Status:      copy.Status,
 			StartedAt:   copy.StartedAt,
@@ -126,6 +150,7 @@ func (s *Server) loadMetaState(state meta.PersistedState) {
 	for _, item := range state.Traces {
 		s.traces[item.ID] = traceState{
 			ID:              item.ID,
+			UserID:          item.UserID,
 			SessionID:       item.SessionID,
 			Branch:          item.BranchName,
 			TraceType:       item.TraceType,
@@ -140,6 +165,7 @@ func (s *Server) loadMetaState(state meta.PersistedState) {
 	for _, item := range state.Comparisons {
 		s.comparisons = append(s.comparisons, comparisonState{
 			ID:              item.ID,
+			UserID:          item.UserID,
 			TraceAID:        item.TraceAID,
 			TraceBID:        item.TraceBID,
 			SkillID:         item.SkillID,
@@ -156,6 +182,7 @@ func (s *Server) loadMetaState(state meta.PersistedState) {
 		s.hooks = append(s.hooks, map[string]any{
 			"seq":        hook.Seq,
 			"event":      hook.Event,
+			"user_id":    hook.UserID,
 			"session_id": hook.SessionID,
 			"payload":    hook.Payload,
 			"created_at": hook.CreatedAt,
@@ -173,7 +200,16 @@ func (s *Server) Router() *gin.Engine {
 	})
 
 	v1 := r.Group("/api/v1")
+	if s.cfg.AuthEnabled {
+		v1.Use(s.authMiddleware())
+	} else {
+		v1.Use(s.anonymousPrincipalMiddleware())
+	}
 	{
+		v1.POST("/auth/keys", s.handleAuthKeyCreate)
+		v1.GET("/auth/keys", s.handleAuthKeyList)
+		v1.POST("/auth/keys/:key_id/revoke", s.handleAuthKeyRevoke)
+
 		v1.POST("/memories", s.handleMemoryWrite)
 		v1.GET("/memories/timeline", s.handleMemoryTimeline)
 		v1.GET("/memories/count", s.handleMemoryCount)
@@ -209,6 +245,319 @@ func (s *Server) Router() *gin.Engine {
 	return r
 }
 
+func (s *Server) anonymousPrincipalMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		principal := apiPrincipal{}
+		c.Set(principalContextKey, principal)
+		ctx := kernel.WithUserID(c.Request.Context(), principal.UserID)
+		c.Request = c.Request.WithContext(ctx)
+		c.Next()
+	}
+}
+
+func (s *Server) authMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		key := extractAPIKeyFromRequest(c.Request)
+		if key == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "missing API key"})
+			c.Abort()
+			return
+		}
+
+		principal := apiPrincipal{}
+		if subtle.ConstantTimeCompare([]byte(key), []byte(s.cfg.AuthAdminKey)) == 1 {
+			principal = apiPrincipal{
+				UserID:  s.cfg.BootstrapAdminUserID,
+				KeyID:   "admin",
+				IsAdmin: true,
+			}
+		} else {
+			prefix, ok := extractAPIKeyPrefix(key)
+			if !ok {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid API key"})
+				c.Abort()
+				return
+			}
+			apiKey, err := s.meta.GetAPIKeyByPrefix(c.Request.Context(), prefix)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				c.Abort()
+				return
+			}
+			if apiKey == nil || apiKey.RevokedAt != nil {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid API key"})
+				c.Abort()
+				return
+			}
+			expectedHash := hashAPIKey(key)
+			if subtle.ConstantTimeCompare([]byte(expectedHash), []byte(apiKey.KeyHash)) != 1 {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid API key"})
+				c.Abort()
+				return
+			}
+			principal = apiPrincipal{
+				UserID: apiKey.UserID,
+				KeyID:  apiKey.ID,
+			}
+			if err := s.meta.TouchAPIKeyLastUsed(c.Request.Context(), apiKey.ID, time.Now().UTC()); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				c.Abort()
+				return
+			}
+		}
+
+		if strings.TrimSpace(principal.UserID) == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid API key principal"})
+			c.Abort()
+			return
+		}
+
+		c.Set(principalContextKey, principal)
+		ctx := kernel.WithUserID(c.Request.Context(), principal.UserID)
+		c.Request = c.Request.WithContext(ctx)
+		c.Next()
+	}
+}
+
+func extractAPIKeyFromRequest(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	if header := strings.TrimSpace(r.Header.Get("X-Day1-API-Key")); header != "" {
+		return header
+	}
+	auth := strings.TrimSpace(r.Header.Get("Authorization"))
+	if len(auth) >= 7 && strings.EqualFold(auth[:7], "Bearer ") {
+		return strings.TrimSpace(auth[7:])
+	}
+	return ""
+}
+
+func (s *Server) currentPrincipal(c *gin.Context) apiPrincipal {
+	if c == nil {
+		return apiPrincipal{}
+	}
+	raw, ok := c.Get(principalContextKey)
+	if !ok {
+		return apiPrincipal{}
+	}
+	principal, ok := raw.(apiPrincipal)
+	if !ok {
+		return apiPrincipal{}
+	}
+	return principal
+}
+
+func (s *Server) currentUserID(c *gin.Context) string {
+	principal := s.currentPrincipal(c)
+	return strings.TrimSpace(principal.UserID)
+}
+
+func (s *Server) handleAuthKeyCreate(c *gin.Context) {
+	if !s.cfg.AuthEnabled {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "auth is disabled"})
+		return
+	}
+	principal := s.currentPrincipal(c)
+	if !principal.IsAdmin {
+		c.JSON(http.StatusForbidden, gin.H{"error": "admin key required"})
+		return
+	}
+
+	var payload struct {
+		UserID string   `json:"user_id"`
+		Label  string   `json:"label"`
+		Scopes []string `json:"scopes"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		writeError(c, fmt.Errorf("%w: %v", kernel.ErrInvalidInput, err))
+		return
+	}
+	userID := strings.TrimSpace(payload.UserID)
+	if userID == "" {
+		writeError(c, fmt.Errorf("%w: user_id is required", kernel.ErrInvalidInput))
+		return
+	}
+	label := strings.TrimSpace(payload.Label)
+	scopes := sanitizeScopes(payload.Scopes)
+	now := time.Now().UTC()
+
+	const maxAttempts = 4
+	var (
+		plainKey string
+		record   meta.APIKey
+		err      error
+	)
+	for i := 0; i < maxAttempts; i++ {
+		plainKey, record, err = newAPIKeyRecord(userID, label, scopes, now)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		err = s.meta.CreateAPIKey(c.Request.Context(), record)
+		if err == nil {
+			break
+		}
+		if !strings.Contains(strings.ToLower(err.Error()), "duplicate") {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"id":         record.ID,
+		"user_id":    record.UserID,
+		"label":      record.Label,
+		"scopes":     record.Scopes,
+		"key_prefix": record.KeyPrefix,
+		"created_at": record.CreatedAt,
+		"api_key":    plainKey,
+	})
+}
+
+func (s *Server) handleAuthKeyList(c *gin.Context) {
+	if !s.cfg.AuthEnabled {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "auth is disabled"})
+		return
+	}
+	principal := s.currentPrincipal(c)
+	queryUserID := strings.TrimSpace(c.Query("user_id"))
+	userID := principal.UserID
+	if principal.IsAdmin {
+		if queryUserID != "" {
+			userID = queryUserID
+		}
+	} else if queryUserID != "" && queryUserID != principal.UserID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+
+	keys, err := s.meta.ListAPIKeys(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	items := make([]map[string]any, 0, len(keys))
+	for _, key := range keys {
+		items = append(items, map[string]any{
+			"id":           key.ID,
+			"user_id":      key.UserID,
+			"label":        key.Label,
+			"scopes":       key.Scopes,
+			"key_prefix":   key.KeyPrefix,
+			"created_at":   key.CreatedAt,
+			"last_used_at": key.LastUsedAt,
+			"revoked_at":   key.RevokedAt,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"keys": items, "count": len(items)})
+}
+
+func (s *Server) handleAuthKeyRevoke(c *gin.Context) {
+	if !s.cfg.AuthEnabled {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "auth is disabled"})
+		return
+	}
+	keyID := strings.TrimSpace(c.Param("key_id"))
+	if keyID == "" {
+		writeError(c, fmt.Errorf("%w: key_id is required", kernel.ErrInvalidInput))
+		return
+	}
+
+	principal := s.currentPrincipal(c)
+	if !principal.IsAdmin {
+		owned, err := s.meta.ListAPIKeys(c.Request.Context(), principal.UserID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		allowed := false
+		for _, item := range owned {
+			if item.ID == keyID {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			c.JSON(http.StatusNotFound, gin.H{"error": "api key not found"})
+			return
+		}
+	}
+
+	if err := s.meta.RevokeAPIKey(c.Request.Context(), keyID, time.Now().UTC()); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"revoked": true, "key_id": keyID})
+}
+
+func sanitizeScopes(scopes []string) []string {
+	if len(scopes) == 0 {
+		return []string{"memory:*"}
+	}
+	out := make([]string, 0, len(scopes))
+	seen := map[string]struct{}{}
+	for _, item := range scopes {
+		scoped := strings.TrimSpace(item)
+		if scoped == "" {
+			continue
+		}
+		if _, ok := seen[scoped]; ok {
+			continue
+		}
+		seen[scoped] = struct{}{}
+		out = append(out, scoped)
+	}
+	if len(out) == 0 {
+		return []string{"memory:*"}
+	}
+	return out
+}
+
+func newAPIKeyRecord(userID, label string, scopes []string, now time.Time) (string, meta.APIKey, error) {
+	prefixBytes := make([]byte, 6)
+	if _, err := rand.Read(prefixBytes); err != nil {
+		return "", meta.APIKey{}, fmt.Errorf("generate key prefix: %w", err)
+	}
+	secretBytes := make([]byte, 24)
+	if _, err := rand.Read(secretBytes); err != nil {
+		return "", meta.APIKey{}, fmt.Errorf("generate key secret: %w", err)
+	}
+	prefix := hex.EncodeToString(prefixBytes)
+	secret := hex.EncodeToString(secretBytes)
+	plain := "day1_" + prefix + "_" + secret
+	record := meta.APIKey{
+		ID:        uuid.NewString(),
+		KeyPrefix: prefix,
+		KeyHash:   hashAPIKey(plain),
+		UserID:    userID,
+		Label:     label,
+		Scopes:    scopes,
+		CreatedAt: now,
+	}
+	return plain, record, nil
+}
+
+func hashAPIKey(raw string) string {
+	sum := sha256.Sum256([]byte(raw))
+	return hex.EncodeToString(sum[:])
+}
+
+func extractAPIKeyPrefix(raw string) (string, bool) {
+	parts := strings.Split(raw, "_")
+	if len(parts) != 3 {
+		return "", false
+	}
+	if parts[0] != "day1" || strings.TrimSpace(parts[1]) == "" || strings.TrimSpace(parts[2]) == "" {
+		return "", false
+	}
+	return parts[1], true
+}
+
 func (s *Server) handleMemoryWrite(c *gin.Context) {
 	var req kernel.WriteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -220,7 +569,7 @@ func (s *Server) handleMemoryWrite(c *gin.Context) {
 		writeError(c, err)
 		return
 	}
-	if err := s.bumpSessionMemory(req.SessionID, memory.BranchName, 1); err != nil {
+	if err := s.bumpSessionMemory(s.currentUserID(c), req.SessionID, memory.BranchName, 1); err != nil {
 		writeError(c, err)
 		return
 	}
@@ -334,8 +683,9 @@ func (s *Server) handleMemoryBatchWrite(c *gin.Context) {
 		sessionWrites[item.SessionID]++
 		sessionBranch[item.SessionID] = item.BranchName
 	}
+	userID := s.currentUserID(c)
 	for sessionID, count := range sessionWrites {
-		if err := s.bumpSessionMemory(sessionID, sessionBranch[sessionID], count); err != nil {
+		if err := s.bumpSessionMemory(userID, sessionID, sessionBranch[sessionID], count); err != nil {
 			writeError(c, err)
 			return
 		}
@@ -450,7 +800,7 @@ func (s *Server) handleMCPInvoke(c *gin.Context) {
 		writeError(c, err)
 		return
 	}
-	if err := s.processMCPToolSideEffects(payload.Tool, payload.Arguments, result); err != nil {
+	if err := s.processMCPToolSideEffects(c.Request.Context(), payload.Tool, payload.Arguments, result); err != nil {
 		writeError(c, err)
 		return
 	}
@@ -484,14 +834,15 @@ func (s *Server) handleMCPInvokePath(c *gin.Context) {
 		writeError(c, err)
 		return
 	}
-	if err := s.processMCPToolSideEffects(toolName, payload.Arguments, result); err != nil {
+	if err := s.processMCPToolSideEffects(c.Request.Context(), toolName, payload.Arguments, result); err != nil {
 		writeError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"tool": toolName, "session_id": payload.SessionID, "result": result})
 }
 
-func (s *Server) processMCPToolSideEffects(tool string, args map[string]any, result any) error {
+func (s *Server) processMCPToolSideEffects(ctx context.Context, tool string, args map[string]any, result any) error {
+	userID := kernel.UserIDFromContext(ctx)
 	switch tool {
 	case "memory_write":
 		sessionID := getMapString(args, "session_id", "")
@@ -504,7 +855,7 @@ func (s *Server) processMCPToolSideEffects(tool string, args map[string]any, res
 				branch = mem.BranchName
 			}
 		}
-		return s.bumpSessionMemory(sessionID, branch, 1)
+		return s.bumpSessionMemory(userID, sessionID, branch, 1)
 	case "memory_write_batch":
 		rawItems := getMapSlice(args, "items")
 		counts := map[string]int{}
@@ -522,7 +873,7 @@ func (s *Server) processMCPToolSideEffects(tool string, args map[string]any, res
 			branches[sid] = getMapString(item, "branch", getMapString(args, "branch", "main"))
 		}
 		for sid, count := range counts {
-			if err := s.bumpSessionMemory(sid, branches[sid], count); err != nil {
+			if err := s.bumpSessionMemory(userID, sid, branches[sid], count); err != nil {
 				return err
 			}
 		}
@@ -541,8 +892,13 @@ func (s *Server) handleClaudeHook(c *gin.Context) {
 		return
 	}
 	sessionID := getAnyString(body, "session_id")
+	if sessionID == "" {
+		sessionID = strings.TrimSpace(c.GetHeader("X-Day1-Session-Id"))
+	}
+	userID := s.currentUserID(c)
 	entry := map[string]any{
 		"event":      event,
+		"user_id":    userID,
 		"session_id": sessionID,
 		"payload":    body,
 		"created_at": time.Now().UTC(),
@@ -551,7 +907,7 @@ func (s *Server) handleClaudeHook(c *gin.Context) {
 		writeError(c, err)
 		return
 	}
-	if err := s.bumpSessionHook(sessionID, getAnyString(body, "branch"), 1); err != nil {
+	if err := s.bumpSessionHook(userID, sessionID, getAnyString(body, "branch"), 1); err != nil {
 		writeError(c, err)
 		return
 	}
@@ -560,17 +916,25 @@ func (s *Server) handleClaudeHook(c *gin.Context) {
 
 func (s *Server) handleRawHook(c *gin.Context) {
 	event := c.GetHeader("X-Day1-Hook-Event")
-	if event == "" {
-		event = getAnyStringFromContext(c, "event", "unknown")
-	}
 	var body map[string]any
 	if err := c.ShouldBindJSON(&body); err != nil {
 		writeError(c, fmt.Errorf("%w: invalid hook payload", kernel.ErrInvalidInput))
 		return
 	}
+	if event == "" {
+		event = anyToString(body["event"])
+	}
+	if event == "" {
+		event = getAnyStringFromContext(c, "event", "unknown")
+	}
 	sessionID := getAnyString(body, "session_id")
+	if sessionID == "" {
+		sessionID = strings.TrimSpace(c.GetHeader("X-Day1-Session-Id"))
+	}
+	userID := s.currentUserID(c)
 	entry := map[string]any{
 		"event":      event,
+		"user_id":    userID,
 		"session_id": sessionID,
 		"payload":    body,
 		"created_at": time.Now().UTC(),
@@ -580,7 +944,7 @@ func (s *Server) handleRawHook(c *gin.Context) {
 		writeError(c, err)
 		return
 	}
-	if err := s.bumpSessionHook(sessionID, getAnyString(body, "branch"), 1); err != nil {
+	if err := s.bumpSessionHook(userID, sessionID, getAnyString(body, "branch"), 1); err != nil {
 		writeError(c, err)
 		return
 	}
@@ -607,8 +971,12 @@ func (s *Server) handleListHooks(c *gin.Context) {
 
 	s.hooksMu.RLock()
 	filtered := make([]map[string]any, 0, len(s.hooks))
+	userID := s.currentUserID(c)
 	for i := len(s.hooks) - 1; i >= 0; i-- {
 		entry := s.hooks[i]
+		if userID != "" && getAnyString(entry, "user_id") != userID {
+			continue
+		}
 		if event != "" && entry["event"] != event {
 			continue
 		}
@@ -641,10 +1009,14 @@ func (s *Server) handleSessionsList(c *gin.Context) {
 	}
 	branch := c.Query("branch")
 	status := c.Query("status")
+	userID := s.currentUserID(c)
 
 	s.metaMu.RLock()
 	items := make([]sessionState, 0, len(s.sessions))
 	for _, session := range s.sessions {
+		if userID != "" && session.UserID != userID {
+			continue
+		}
 		if branch != "" && session.BranchName != branch {
 			continue
 		}
@@ -666,8 +1038,9 @@ func (s *Server) handleSessionsList(c *gin.Context) {
 
 func (s *Server) handleSessionGet(c *gin.Context) {
 	sessionID := c.Param("session_id")
+	userID := s.currentUserID(c)
 	s.metaMu.RLock()
-	session, ok := s.sessions[sessionID]
+	session, ok := s.sessions[sessionKey(userID, sessionID)]
 	if !ok {
 		s.metaMu.RUnlock()
 		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
@@ -676,6 +1049,9 @@ func (s *Server) handleSessionGet(c *gin.Context) {
 	snapshot := *session
 	traces := make([]traceState, 0)
 	for _, trace := range s.traces {
+		if userID != "" && trace.UserID != userID {
+			continue
+		}
 		if trace.SessionID == sessionID {
 			traces = append(traces, trace)
 		}
@@ -706,8 +1082,9 @@ func (s *Server) handleSessionGet(c *gin.Context) {
 
 func (s *Server) handleSessionSummary(c *gin.Context) {
 	sessionID := c.Param("session_id")
+	userID := s.currentUserID(c)
 	s.metaMu.RLock()
-	session, ok := s.sessions[sessionID]
+	session, ok := s.sessions[sessionKey(userID, sessionID)]
 	s.metaMu.RUnlock()
 	if !ok {
 		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
@@ -759,7 +1136,7 @@ func (s *Server) handleSessionCheckpoint(c *gin.Context) {
 		writeError(c, err)
 		return
 	}
-	if err := s.bumpSessionMemory(sessionID, memory.BranchName, 1); err != nil {
+	if err := s.bumpSessionMemory(s.currentUserID(c), sessionID, memory.BranchName, 1); err != nil {
 		writeError(c, err)
 		return
 	}
@@ -785,10 +1162,14 @@ func (s *Server) handleTraceList(c *gin.Context) {
 	branch := c.Query("branch")
 	traceType := c.Query("trace_type")
 	skillID := c.Query("skill_id")
+	userID := s.currentUserID(c)
 
 	s.metaMu.RLock()
 	filtered := make([]traceState, 0, len(s.traces))
 	for _, trace := range s.traces {
+		if userID != "" && trace.UserID != userID {
+			continue
+		}
 		if sessionID != "" && trace.SessionID != sessionID {
 			continue
 		}
@@ -827,10 +1208,11 @@ func (s *Server) handleTraceList(c *gin.Context) {
 
 func (s *Server) handleTraceGet(c *gin.Context) {
 	traceID := c.Param("trace_id")
+	userID := s.currentUserID(c)
 	s.metaMu.RLock()
 	trace, ok := s.traces[traceID]
 	s.metaMu.RUnlock()
-	if !ok {
+	if !ok || (userID != "" && trace.UserID != userID) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "trace not found"})
 		return
 	}
@@ -859,6 +1241,7 @@ func (s *Server) handleTraceCreate(c *gin.Context) {
 
 	trace := traceState{
 		ID:              uuid.NewString(),
+		UserID:          s.currentUserID(c),
 		SessionID:       body.SessionID,
 		Branch:          defaultString(body.Branch, "main"),
 		TraceType:       defaultString(body.TraceType, "replay"),
@@ -876,7 +1259,7 @@ func (s *Server) handleTraceCreate(c *gin.Context) {
 	s.metaMu.Lock()
 	s.traces[trace.ID] = trace
 	s.metaMu.Unlock()
-	if err := s.bumpSessionTrace(trace.SessionID, trace.Branch, 1); err != nil {
+	if err := s.bumpSessionTrace(s.currentUserID(c), trace.SessionID, trace.Branch, 1); err != nil {
 		writeError(c, err)
 		return
 	}
@@ -917,7 +1300,11 @@ func (s *Server) handleTraceExtract(c *gin.Context) {
 
 	steps := make([]map[string]any, 0)
 	s.hooksMu.RLock()
+	userID := s.currentUserID(c)
 	for idx, entry := range s.hooks {
+		if userID != "" && getAnyString(entry, "user_id") != userID {
+			continue
+		}
 		if getAnyString(entry, "session_id") != body.SessionID {
 			continue
 		}
@@ -934,6 +1321,7 @@ func (s *Server) handleTraceExtract(c *gin.Context) {
 
 	trace := traceState{
 		ID:              uuid.NewString(),
+		UserID:          s.currentUserID(c),
 		SessionID:       body.SessionID,
 		Branch:          defaultString(body.Branch, "main"),
 		TraceType:       "original",
@@ -948,7 +1336,7 @@ func (s *Server) handleTraceExtract(c *gin.Context) {
 	s.metaMu.Lock()
 	s.traces[trace.ID] = trace
 	s.metaMu.Unlock()
-	if err := s.bumpSessionTrace(trace.SessionID, trace.Branch, 1); err != nil {
+	if err := s.bumpSessionTrace(s.currentUserID(c), trace.SessionID, trace.Branch, 1); err != nil {
 		writeError(c, err)
 		return
 	}
@@ -985,10 +1373,11 @@ func (s *Server) handleTraceCompare(c *gin.Context) {
 	}
 
 	s.metaMu.RLock()
+	userID := s.currentUserID(c)
 	traceA, okA := s.traces[traceAID]
 	traceB, okB := s.traces[traceBID]
 	s.metaMu.RUnlock()
-	if !okA || !okB {
+	if !okA || !okB || (userID != "" && (traceA.UserID != userID || traceB.UserID != userID)) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "trace not found"})
 		return
 	}
@@ -1019,6 +1408,7 @@ func (s *Server) handleTraceCompare(c *gin.Context) {
 
 	comparison := comparisonState{
 		ID:              uuid.NewString(),
+		UserID:          userID,
 		TraceAID:        traceAID,
 		TraceBID:        traceBID,
 		SkillID:         body.SkillID,
@@ -1091,6 +1481,7 @@ func (s *Server) appendHook(ctx context.Context, entry map[string]any) (map[stri
 	if s.meta != nil {
 		hook := meta.HookLog{
 			Event:     getAnyString(entry, "event"),
+			UserID:    getAnyString(entry, "user_id"),
 			SessionID: getAnyString(entry, "session_id"),
 			Payload:   getAnyMap(entry, "payload"),
 			CreatedAt: toTime(entry["created_at"]),
@@ -1111,47 +1502,48 @@ func (s *Server) appendHook(ctx context.Context, entry map[string]any) (map[stri
 	return entry, nil
 }
 
-func (s *Server) bumpSessionMemory(sessionID, branch string, delta int) error {
+func (s *Server) bumpSessionMemory(userID, sessionID, branch string, delta int) error {
 	if strings.TrimSpace(sessionID) == "" || delta <= 0 {
 		return nil
 	}
 	s.metaMu.Lock()
-	session := s.ensureSessionLocked(sessionID, branch)
+	session := s.ensureSessionLocked(userID, sessionID, branch)
 	session.MemoryCount += delta
 	err := s.persistSessionLocked(context.Background(), session)
 	s.metaMu.Unlock()
 	return err
 }
 
-func (s *Server) bumpSessionTrace(sessionID, branch string, delta int) error {
+func (s *Server) bumpSessionTrace(userID, sessionID, branch string, delta int) error {
 	if strings.TrimSpace(sessionID) == "" || delta <= 0 {
 		return nil
 	}
 	s.metaMu.Lock()
-	session := s.ensureSessionLocked(sessionID, branch)
+	session := s.ensureSessionLocked(userID, sessionID, branch)
 	session.TraceCount += delta
 	err := s.persistSessionLocked(context.Background(), session)
 	s.metaMu.Unlock()
 	return err
 }
 
-func (s *Server) bumpSessionHook(sessionID, branch string, delta int) error {
+func (s *Server) bumpSessionHook(userID, sessionID, branch string, delta int) error {
 	if strings.TrimSpace(sessionID) == "" || delta <= 0 {
 		return nil
 	}
 	s.metaMu.Lock()
-	session := s.ensureSessionLocked(sessionID, branch)
+	session := s.ensureSessionLocked(userID, sessionID, branch)
 	session.HookCount += delta
 	err := s.persistSessionLocked(context.Background(), session)
 	s.metaMu.Unlock()
 	return err
 }
 
-func (s *Server) ensureSessionLocked(sessionID, branch string) *sessionState {
+func (s *Server) ensureSessionLocked(userID, sessionID, branch string) *sessionState {
 	if branch == "" {
 		branch = "main"
 	}
-	if existing, ok := s.sessions[sessionID]; ok {
+	key := sessionKey(userID, sessionID)
+	if existing, ok := s.sessions[key]; ok {
 		if existing.BranchName == "" {
 			existing.BranchName = branch
 		}
@@ -1166,11 +1558,12 @@ func (s *Server) ensureSessionLocked(sessionID, branch string) *sessionState {
 	now := time.Now().UTC()
 	created := &sessionState{
 		ID:         sessionID,
+		UserID:     userID,
 		BranchName: branch,
 		Status:     "active",
 		StartedAt:  now,
 	}
-	s.sessions[sessionID] = created
+	s.sessions[key] = created
 	return created
 }
 
@@ -1180,6 +1573,7 @@ func (s *Server) persistSessionLocked(ctx context.Context, session *sessionState
 	}
 	return s.meta.UpsertSession(ctx, meta.Session{
 		ID:          session.ID,
+		UserID:      session.UserID,
 		BranchName:  session.BranchName,
 		Status:      session.Status,
 		StartedAt:   session.StartedAt,
@@ -1196,6 +1590,7 @@ func (s *Server) persistTrace(ctx context.Context, trace traceState) error {
 	}
 	return s.meta.UpsertTrace(ctx, meta.Trace{
 		ID:              trace.ID,
+		UserID:          trace.UserID,
 		SessionID:       trace.SessionID,
 		BranchName:      trace.Branch,
 		TraceType:       trace.TraceType,
@@ -1214,6 +1609,7 @@ func (s *Server) persistComparison(ctx context.Context, comparison comparisonSta
 	}
 	return s.meta.UpsertComparison(ctx, meta.Comparison{
 		ID:              comparison.ID,
+		UserID:          comparison.UserID,
 		TraceAID:        comparison.TraceAID,
 		TraceBID:        comparison.TraceBID,
 		SkillID:         comparison.SkillID,
@@ -1242,6 +1638,14 @@ func getAnyString(data map[string]any, key string) string {
 	if !ok || v == nil {
 		return ""
 	}
+	s, ok := v.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(s)
+}
+
+func anyToString(v any) string {
 	s, ok := v.(string)
 	if !ok {
 		return ""
@@ -1282,6 +1686,10 @@ func defaultString(v, fallback string) string {
 		return fallback
 	}
 	return v
+}
+
+func sessionKey(userID, sessionID string) string {
+	return strings.TrimSpace(userID) + "::" + strings.TrimSpace(sessionID)
 }
 
 func getMapString(m map[string]any, key, fallback string) string {

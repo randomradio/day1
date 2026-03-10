@@ -8,6 +8,7 @@ import (
 // Memory is the durable memory unit.
 type Memory struct {
 	ID          string         `json:"id"`
+	UserID      string         `json:"user_id,omitempty"`
 	Text        string         `json:"text"`
 	Context     string         `json:"context,omitempty"`
 	FileContext string         `json:"file_context,omitempty"`
@@ -26,6 +27,7 @@ type Memory struct {
 
 type WriteRequest struct {
 	Text        string         `json:"text"`
+	UserID      string         `json:"user_id,omitempty"`
 	Context     string         `json:"context,omitempty"`
 	FileContext string         `json:"file_context,omitempty"`
 	SessionID   string         `json:"session_id,omitempty"`
@@ -40,6 +42,7 @@ type WriteRequest struct {
 
 type UpdateRequest struct {
 	MemoryID    string         `json:"memory_id"`
+	UserID      string         `json:"user_id,omitempty"`
 	Text        *string        `json:"text,omitempty"`
 	Context     *string        `json:"context,omitempty"`
 	FileContext *string        `json:"file_context,omitempty"`
@@ -75,6 +78,7 @@ type TimelineRequest struct {
 
 type Branch struct {
 	Name        string    `json:"branch_name"`
+	UserID      string    `json:"user_id,omitempty"`
 	Parent      string    `json:"parent_branch,omitempty"`
 	Description string    `json:"description,omitempty"`
 	Status      string    `json:"status"`
@@ -84,6 +88,7 @@ type Branch struct {
 
 type Snapshot struct {
 	ID        string    `json:"snapshot_id"`
+	UserID    string    `json:"user_id,omitempty"`
 	Branch    string    `json:"branch"`
 	Label     string    `json:"label,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
@@ -98,6 +103,7 @@ type MergeResult struct {
 
 type Relation struct {
 	ID           string         `json:"id"`
+	UserID       string         `json:"user_id,omitempty"`
 	SourceID     string         `json:"source_id"`
 	TargetID     string         `json:"target_id"`
 	RelationType string         `json:"relation_type"`

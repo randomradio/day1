@@ -16,7 +16,7 @@ type StateStore interface {
 	LoadState(ctx context.Context) (PersistedState, error)
 	UpsertMemory(ctx context.Context, memory Memory) error
 	UpsertBranch(ctx context.Context, branch Branch) error
-	DeleteBranch(ctx context.Context, branchName string) error
+	DeleteBranch(ctx context.Context, userID, branchName string) error
 	UpsertSnapshot(ctx context.Context, snapshot Snapshot) error
 	UpsertRelation(ctx context.Context, relation Relation) error
 	DeleteRelation(ctx context.Context, relationID string) error

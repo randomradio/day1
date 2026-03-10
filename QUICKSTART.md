@@ -93,7 +93,26 @@ go build ./...
 go run ./cmd/day1-api
 ```
 
-## 6. Troubleshooting
+## 6. Optional auth bootstrap
+
+Auth requires SQL persistence (`DAY1_DATABASE_URL`) and:
+
+```bash
+export DAY1_AUTH_ENABLED=true
+export DAY1_AUTH_ADMIN_KEY='change-me'
+export DAY1_BOOTSTRAP_ADMIN_USER_ID='admin'
+```
+
+Create a user key with the admin key:
+
+```bash
+curl -sS -X POST http://localhost:9821/api/v1/auth/keys \
+  -H 'Content-Type: application/json' \
+  -H "X-Day1-API-Key: $DAY1_AUTH_ADMIN_KEY" \
+  -d '{"user_id":"alice","label":"alice-default"}'
+```
+
+## 7. Troubleshooting
 
 | Problem | Fix |
 |---------|-----|
